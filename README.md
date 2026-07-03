@@ -15,12 +15,7 @@ Native Jetpack Compose Android app for [Money Plan](../money-plan-frontend), sha
 | **Privacy policy** | [moneyplann.com/privacy](https://www.moneyplann.com/privacy) |
 | **Support** | [support@moneyplann.com](mailto:support@moneyplann.com) · [moneyplann.com/faq](https://www.moneyplann.com/faq) |
 
-**App Review demo account** (same as iOS / web):
-
-- Email: `appstore.review@moneyplann.com`
-- Password: `MoneyPlan-Review2026!`
-
-Re-seed sample data if needed: `money-plan-backend/scripts/create-demo-account.ts`
+**App Review demo account:** credentials are **not** stored in this repo. Enter them in **Play Console → Policy → App content → App access** (and your team password manager). Re-seed sample data: `money-plan-backend/scripts/create-demo-account.ts` (requires local `scripts/demo-account.env` — see `demo-account.env.example`).
 
 ---
 
