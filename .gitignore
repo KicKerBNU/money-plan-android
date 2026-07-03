@@ -3,6 +3,10 @@
 /app/build/
 /local.properties
 /app/google-services.json
+keystore.properties
+/release/
+*.keystore
+*.jks
 *.iml
 .idea/
 .DS_Store

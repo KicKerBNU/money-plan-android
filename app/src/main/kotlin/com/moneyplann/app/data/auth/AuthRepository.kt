@@ -213,10 +213,17 @@ class AuthRepository {
         AppContainer.appContext.getString(R.string.default_web_client_id)
 
     private fun googleDeveloperErrorMessage(): String =
-        "Google Sign-In is not configured for this build. In Firebase Console → Project settings → " +
-            "Android app com.moneyplann.app, add debug SHA-1 " +
-            "25:2D:71:5F:B1:63:09:FB:01:58:94:F0:34:78:D1:1A:48:B0:36:8B, " +
-            "then download a new google-services.json and rebuild."
+        "Google Sign-In is not configured for this app's signing certificate (Firebase error 10). " +
+            "Emulator/debug builds and Play Store builds use different SHA-1 fingerprints.\n\n" +
+            "Fix:\n" +
+            "1. Play Console → Setup → App integrity → App signing → copy App signing key SHA-1 " +
+            "(required for closed testers and production).\n" +
+            "2. Firebase Console → Project settings → Android app com.moneyplann.app → Add fingerprint. " +
+            "Add Play App signing SHA-1, upload key SHA-1, and debug SHA-1 if you test locally.\n" +
+            "3. Download a new google-services.json → replace app/google-services.json → rebuild AAB → " +
+            "upload a new closed-testing release.\n\n" +
+            "Local debug SHA-1: 25:2D:71:5F:B1:63:09:FB:01:58:94:F0:34:78:D1:1A:48:B0:36:8B\n" +
+            "Upload key SHA-1: 64:BE:B6:9F:D3:6F:B5:0F:F7:90:54:3B:CF:B0:9A:12:DD:31:B1:19"
 }
 
 class GoogleSignInRequiredException(val signInIntent: android.content.Intent) : Exception()

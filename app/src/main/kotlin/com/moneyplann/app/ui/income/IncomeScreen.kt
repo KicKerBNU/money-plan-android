@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -60,6 +61,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 
 data class IncomeUiState(
@@ -95,22 +97,24 @@ class IncomeViewModel : ViewModel() {
         }
     }
 
-    fun create(date: String, amount: Double, accountId: Int, note: String?) {
+    fun create(date: String, amount: Double, accountId: Int, note: String?, onSuccess: () -> Unit = {}) {
         viewModelScope.launch {
             try {
                 api.createIncome(date, amount, accountId, note)
                 load()
+                onSuccess()
             } catch (_: Exception) {
             }
         }
     }
 
-    fun update(entry: IncomeEntry) {
+    fun update(entry: IncomeEntry, onSuccess: () -> Unit = {}) {
         viewModelScope.launch {
             val accountId = entry.accountId ?: return@launch
             try {
                 api.updateIncome(entry.id, entry.date, entry.amount, accountId, entry.note)
                 load()
+                onSuccess()
             } catch (_: Exception) {
             }
         }
@@ -135,7 +139,6 @@ class IncomeViewModel : ViewModel() {
 fun IncomeScreen(modifier: Modifier = Modifier, viewModel: IncomeViewModel = viewModel()) {
     val state by viewModel.state.collectAsState()
     val currency = AppContainer.moneyPreferences.activeCurrency
-    val dateState = rememberDatePickerState()
     var amountText by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var accountId by remember(state.accounts) {
@@ -144,6 +147,13 @@ fun IncomeScreen(modifier: Modifier = Modifier, viewModel: IncomeViewModel = vie
     var editing by remember { mutableStateOf<IncomeEntry?>(null) }
     var toDelete by remember { mutableStateOf<IncomeEntry?>(null) }
     var accountExpanded by remember { mutableStateOf(false) }
+    var formError by remember { mutableStateOf("") }
+
+    LaunchedEffect(state.accounts) {
+        if (accountId == 0) {
+            DefaultAccountPicker.pick(state.accounts)?.id?.let { accountId = it }
+        }
+    }
 
     LaunchedEffect(Unit) { viewModel.load() }
 
@@ -196,6 +206,15 @@ fun IncomeScreen(modifier: Modifier = Modifier, viewModel: IncomeViewModel = vie
                 item {
                     FinanceCard {
                         Text(if (editing == null) "Quick add" else "Edit income", fontWeight = FontWeight.SemiBold)
+                        val initialDateMillis = remember(editing) {
+                            editing?.date?.let { DateUtils.parseLocalIsoDate(it) }
+                                ?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli()
+                                ?: LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                        }
+                        val dateState = rememberDatePickerState(initialSelectedDateMillis = initialDateMillis)
+                        LaunchedEffect(initialDateMillis) {
+                            dateState.selectedDateMillis = initialDateMillis
+                        }
                         DatePicker(state = dateState)
                         OutlinedTextField(
                             value = amountText,
@@ -229,15 +248,29 @@ fun IncomeScreen(modifier: Modifier = Modifier, viewModel: IncomeViewModel = vie
                             label = { Text("Note") },
                             modifier = Modifier.fillMaxWidth(),
                         )
+                        if (formError.isNotBlank()) {
+                            Text(formError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            TextButton(onClick = {
-                                val amount = amountText.replace(",", ".").toDoubleOrNull() ?: return@TextButton
-                                val dateMillis = dateState.selectedDateMillis ?: return@TextButton
+                            Button(onClick = {
+                                formError = ""
+                                val amount = amountText.replace(",", ".").toDoubleOrNull()
+                                val dateMillis = dateState.selectedDateMillis
+                                if (amount == null || amount <= 0.0 || dateMillis == null || accountId == 0) {
+                                    formError = "Enter an amount and choose an account."
+                                    return@Button
+                                }
                                 val date = DateUtils.localIsoDate(
                                     Instant.ofEpochMilli(dateMillis).atZone(ZoneId.systemDefault()).toLocalDate(),
                                 )
+                                val clearForm = {
+                                    amountText = ""
+                                    note = ""
+                                    editing = null
+                                    formError = ""
+                                }
                                 if (editing == null) {
-                                    viewModel.create(date, amount, accountId, note.ifBlank { null })
+                                    viewModel.create(date, amount, accountId, note.ifBlank { null }, onSuccess = clearForm)
                                 } else {
                                     viewModel.update(
                                         editing!!.copy(
@@ -247,14 +280,12 @@ fun IncomeScreen(modifier: Modifier = Modifier, viewModel: IncomeViewModel = vie
                                             note = note.ifBlank { null },
                                             accountName = state.accounts.firstOrNull { it.id == accountId }?.name,
                                         ),
+                                        onSuccess = clearForm,
                                     )
-                                    editing = null
                                 }
-                                amountText = ""
-                                note = ""
                             }) { Text(if (editing == null) "Add income" else "Save changes") }
                             if (editing != null) {
-                                TextButton(onClick = { editing = null; amountText = ""; note = "" }) {
+                                TextButton(onClick = { editing = null; amountText = ""; note = ""; formError = "" }) {
                                     Text("Cancel edit")
                                 }
                             }
