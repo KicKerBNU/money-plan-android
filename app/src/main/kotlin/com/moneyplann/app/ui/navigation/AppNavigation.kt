@@ -1,5 +1,7 @@
 package com.moneyplann.app.ui.navigation
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
@@ -13,6 +15,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -28,6 +31,8 @@ import com.moneyplann.app.ui.chat.ChatbotScreen
 import com.moneyplann.app.ui.expenses.ExpenseFormSheet
 import com.moneyplann.app.ui.expenses.ExpensesScreen
 import com.moneyplann.app.ui.income.IncomeScreen
+import com.moneyplann.app.ui.recurring.RecurringExpensesScreen
+import com.moneyplann.app.ui.settings.LocalOpenRecurringExpenses
 import kotlinx.coroutines.launch
 
 private enum class AppTab(val label: String) {
@@ -46,82 +51,102 @@ fun AppNavigation(modifier: Modifier = Modifier) {
     var addAccounts by remember { mutableStateOf(emptyList<Account>()) }
     var addCategories by remember { mutableStateOf(emptyList<Category>()) }
     var expensesReloadKey by remember { mutableIntStateOf(0) }
+    var showRecurringExpenses by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val api = AppContainer.financeApi
 
     fun openAddExpense() {
+        showAddExpense = true
         scope.launch {
             try {
                 addAccounts = api.fetchAccounts()
                 addCategories = api.fetchCategories()
-                showAddExpense = true
             } catch (_: Exception) {
             }
         }
     }
 
-    if (showAddExpense) {
-        ExpenseFormSheet(
-            accounts = addAccounts,
-            categories = addCategories,
-            onDismiss = { showAddExpense = false },
-            onSave = { date, amount, categoryId, accountId, note ->
-                scope.launch {
-                    try {
-                        api.createExpense(date, amount, categoryId, accountId, note)
-                        expensesReloadKey++
-                        showAddExpense = false
-                    } catch (_: Exception) {
+    Box(modifier.fillMaxSize()) {
+        CompositionLocalProvider(
+            LocalOpenRecurringExpenses provides { showRecurringExpenses = true },
+        ) {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            bottomBar = {
+                NavigationBar {
+                    AppTab.entries.forEachIndexed { index, tab ->
+                        NavigationBarItem(
+                            selected = selectedTab == index,
+                            onClick = {
+                                if (tab == AppTab.ADD) {
+                                    openAddExpense()
+                                    selectedTab = previousTab
+                                } else {
+                                    previousTab = index
+                                    selectedTab = index
+                                }
+                            },
+                            icon = {
+                                Icon(
+                                    when (tab) {
+                                        AppTab.EXPENSES -> Icons.AutoMirrored.Filled.List
+                                        AppTab.INCOME -> Icons.Default.Payments
+                                        AppTab.ADD -> Icons.Default.Add
+                                        AppTab.CHAT -> Icons.Default.Chat
+                                        AppTab.ACCOUNTS -> Icons.Default.AccountBalance
+                                    },
+                                    contentDescription = tab.label,
+                                )
+                            },
+                            label = { Text(tab.label) },
+                        )
                     }
                 }
             },
-        )
-    }
-
-    Scaffold(
-        modifier = modifier,
-        bottomBar = {
-            NavigationBar {
-                AppTab.entries.forEachIndexed { index, tab ->
-                    NavigationBarItem(
-                        selected = selectedTab == index,
-                        onClick = {
-                            if (tab == AppTab.ADD) {
-                                openAddExpense()
-                                selectedTab = previousTab
-                            } else {
-                                previousTab = index
-                                selectedTab = index
-                            }
-                        },
-                        icon = {
-                            Icon(
-                                when (tab) {
-                                    AppTab.EXPENSES -> Icons.AutoMirrored.Filled.List
-                                    AppTab.INCOME -> Icons.Default.Payments
-                                    AppTab.ADD -> Icons.Default.Add
-                                    AppTab.CHAT -> Icons.Default.Chat
-                                    AppTab.ACCOUNTS -> Icons.Default.AccountBalance
-                                },
-                                contentDescription = tab.label,
-                            )
-                        },
-                        label = { Text(tab.label) },
-                    )
-                }
+        ) { padding ->
+            when (AppTab.entries[selectedTab]) {
+                AppTab.EXPENSES -> ExpensesScreen(
+                    onAddExpense = ::openAddExpense,
+                    reloadKey = expensesReloadKey,
+                    modifier = Modifier.padding(padding),
+                )
+                AppTab.INCOME -> IncomeScreen(Modifier.padding(padding))
+                AppTab.CHAT -> ChatbotScreen(Modifier.padding(padding))
+                AppTab.ACCOUNTS -> AccountsScreen(Modifier.padding(padding))
+                AppTab.ADD -> Unit
             }
-        },
-    ) { padding ->
-        when (AppTab.entries[selectedTab]) {
-            AppTab.EXPENSES -> ExpensesScreen(
-                onAddExpense = ::openAddExpense,
-                reloadKey = expensesReloadKey,
-                modifier = Modifier.padding(padding),
+        }
+        }
+
+        if (showAddExpense) {
+            ExpenseFormSheet(
+                modifier = Modifier.fillMaxSize(),
+                accounts = addAccounts,
+                categories = addCategories,
+                onDismiss = { showAddExpense = false },
+                onSave = { date, amount, categoryId, accountId, note, recurrence ->
+                    scope.launch {
+                        try {
+                            val frequency = if (recurrence?.isCreate == true && recurrence.enabled) {
+                                recurrence.frequency
+                            } else {
+                                null
+                            }
+                            api.createExpense(date, amount, categoryId, accountId, note, frequency)
+                            expensesReloadKey++
+                            showAddExpense = false
+                        } catch (_: Exception) {
+                        }
+                    }
+                },
             )
-            AppTab.INCOME -> IncomeScreen(Modifier.padding(padding))
-            AppTab.CHAT -> ChatbotScreen(Modifier.padding(padding))
-            AppTab.ACCOUNTS -> AccountsScreen(Modifier.padding(padding))
-            AppTab.ADD -> Unit
+        }
+
+        if (showRecurringExpenses) {
+            RecurringExpensesScreen(
+                modifier = Modifier.fillMaxSize(),
+                onDismiss = { showRecurringExpenses = false },
+            )
         }
     }
 }

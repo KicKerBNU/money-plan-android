@@ -18,7 +18,8 @@ class ApiClient(private val authRepository: AuthRepository) {
     val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
-        encodeDefaults = true
+        encodeDefaults = false
+        explicitNulls = false
     }
 
     private val http = OkHttpClient.Builder()

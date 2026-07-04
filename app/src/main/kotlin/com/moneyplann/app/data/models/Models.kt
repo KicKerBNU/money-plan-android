@@ -30,6 +30,46 @@ data class Expense(
     val accountName: String,
     val note: String? = null,
     val manualSort: Int? = null,
+    val recurringExpenseId: Int? = null,
+)
+
+@Serializable
+enum class RecurrenceFrequency {
+    weekly,
+    monthly,
+    quarterly,
+    semiannual,
+    yearly,
+}
+
+fun RecurrenceFrequency.displayLabel(): String = when (this) {
+    RecurrenceFrequency.weekly -> "Weekly"
+    RecurrenceFrequency.monthly -> "Monthly"
+    RecurrenceFrequency.quarterly -> "Quarterly"
+    RecurrenceFrequency.semiannual -> "Every 6 months"
+    RecurrenceFrequency.yearly -> "Yearly"
+}
+
+@Serializable
+data class RecurringExpense(
+    val id: Int,
+    val amount: Double,
+    val categoryId: Int,
+    val categoryName: String,
+    val accountId: Int,
+    val accountName: String,
+    val note: String? = null,
+    val frequency: RecurrenceFrequency,
+    val startDate: String,
+    val nextDate: String,
+    val active: Boolean,
+)
+
+/** Recurrence payload when saving an expense form. */
+data class RecurrenceSave(
+    val isCreate: Boolean,
+    val enabled: Boolean,
+    val frequency: RecurrenceFrequency,
 )
 
 @Serializable

@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -72,29 +73,6 @@ fun ExpensesScreen(
 
     androidx.compose.runtime.LaunchedEffect(reloadKey) { viewModel.load() }
 
-    if (editingExpense != null) {
-        ExpenseFormSheet(
-            accounts = state.accounts,
-            categories = state.categories,
-            editing = editingExpense,
-            onDismiss = { editingExpense = null },
-            onSave = { date, amount, categoryId, accountId, note ->
-                val expense = editingExpense!!
-                val updated = expense.copy(
-                    date = date,
-                    amount = amount,
-                    categoryId = categoryId,
-                    accountId = accountId,
-                    note = note,
-                    categoryName = state.categories.firstOrNull { it.id == categoryId }?.name ?: expense.categoryName,
-                    accountName = state.accounts.firstOrNull { it.id == accountId }?.name ?: expense.accountName,
-                )
-                viewModel.updateExpenseOptimistic(updated)
-                editingExpense = null
-            },
-        )
-    }
-
     if (showTripRange) {
         TripRangeSheet(
             onDismiss = { showTripRange = false },
@@ -120,125 +98,150 @@ fun ExpensesScreen(
         )
     }
 
-    Scaffold(
-        modifier = modifier,
-        topBar = {
-            TopAppBar(
-                title = { Text("Expenses") },
-                actions = {
-                    IconButton(onClick = onAddExpense) {
-                        Icon(Icons.Default.Add, contentDescription = "Add expense")
-                    }
-                    SettingsMenu()
-                },
-            )
-        },
-    ) { padding ->
-        when {
-            state.isLoading -> LoadingStateView(Modifier.padding(padding))
-            state.errorMessage != null -> ErrorStateView(state.errorMessage!!, Modifier.padding(padding))
-            else -> LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                item {
-                    OutlinedTextField(
-                        value = state.searchText,
-                        onValueChange = viewModel::setSearch,
-                        modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("Search expenses") },
-                        singleLine = true,
-                    )
-                }
-                item {
-                    Text("${state.expenses.size} entries this month", color = AppColors.Muted)
-                }
-                item {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        FinanceCard(Modifier.weight(1f)) {
-                            KpiView("Total spent", CurrencyFormatter.format(state.totalSpent, currency))
+    Box(modifier.fillMaxSize()) {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            topBar = {
+                TopAppBar(
+                    title = { Text("Expenses") },
+                    actions = {
+                        IconButton(onClick = onAddExpense) {
+                            Icon(Icons.Default.Add, contentDescription = "Add expense")
                         }
-                        FinanceCard(Modifier.weight(1f)) {
-                            KpiView(
-                                "Cash flow",
-                                CurrencyFormatter.formatSigned(state.cashFlow, currency),
-                                if (state.cashFlow >= 0) AppColors.Positive else AppColors.Danger,
-                            )
-                        }
-                    }
-                }
-                item {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        AssistChip(onClick = { viewModel.applyQuickRange(3) }, label = { Text("Last 3 days") })
-                        AssistChip(onClick = { viewModel.applyQuickRange(7) }, label = { Text("Last 7 days") })
-                        AssistChip(onClick = { showTripRange = true }, label = { Text("Custom range") })
-                        if (state.dateRangeStart != null) {
-                            AssistChip(onClick = { viewModel.clearDateRange() }, label = { Text("Clear dates") })
-                        }
-                    }
-                }
-                item {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = state.selectedCategoryIds.isEmpty(),
-                            onClick = { viewModel.clearCategories() },
-                            label = { Text("All") },
+                        SettingsMenu()
+                    },
+                )
+            },
+        ) { padding ->
+            when {
+                state.isLoading -> LoadingStateView(Modifier.padding(padding))
+                state.errorMessage != null -> ErrorStateView(state.errorMessage!!, Modifier.padding(padding))
+                else -> LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    item {
+                        OutlinedTextField(
+                            value = state.searchText,
+                            onValueChange = viewModel::setSearch,
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = { Text("Search expenses") },
+                            singleLine = true,
                         )
-                        state.categories.take(6).forEach { category ->
+                    }
+                    item {
+                        Text("${state.expenses.size} entries this month", color = AppColors.Muted)
+                    }
+                    item {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            FinanceCard(Modifier.weight(1f)) {
+                                KpiView("Total spent", CurrencyFormatter.format(state.totalSpent, currency))
+                            }
+                            FinanceCard(Modifier.weight(1f)) {
+                                KpiView(
+                                    "Cash flow",
+                                    CurrencyFormatter.formatSigned(state.cashFlow, currency),
+                                    if (state.cashFlow >= 0) AppColors.Positive else AppColors.Danger,
+                                )
+                            }
+                        }
+                    }
+                    item {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            AssistChip(onClick = { viewModel.applyQuickRange(3) }, label = { Text("Last 3 days") })
+                            AssistChip(onClick = { viewModel.applyQuickRange(7) }, label = { Text("Last 7 days") })
+                            AssistChip(onClick = { showTripRange = true }, label = { Text("Custom range") })
+                            if (state.dateRangeStart != null) {
+                                AssistChip(onClick = { viewModel.clearDateRange() }, label = { Text("Clear dates") })
+                            }
+                        }
+                    }
+                    item {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FilterChip(
-                                selected = state.selectedCategoryIds.contains(category.id),
-                                onClick = { viewModel.toggleCategory(category.id) },
-                                label = { Text(category.name) },
+                                selected = state.selectedCategoryIds.isEmpty(),
+                                onClick = { viewModel.clearCategories() },
+                                label = { Text("All") },
+                            )
+                            state.categories.take(6).forEach { category ->
+                                FilterChip(
+                                    selected = state.selectedCategoryIds.contains(category.id),
+                                    onClick = { viewModel.toggleCategory(category.id) },
+                                    label = { Text(category.name) },
+                                )
+                            }
+                        }
+                    }
+                    if (state.filteredExpenses.isEmpty()) {
+                        item {
+                            EmptyStateView(
+                                title = "No expenses yet",
+                                message = "Add your first expense for this month.",
+                                actionTitle = "Add expense",
+                                onAction = onAddExpense,
+                            )
+                        }
+                    } else {
+                        items(state.filteredExpenses, key = { it.id }) { expense ->
+                            ExpenseRow(
+                                expense = expense,
+                                currency = currency,
+                                onEdit = { editingExpense = expense },
+                                onDelete = { expenseToDelete = expense },
                             )
                         }
                     }
-                }
-                if (state.filteredExpenses.isEmpty()) {
-                    item {
-                        EmptyStateView(
-                            title = "No expenses yet",
-                            message = "Add your first expense for this month.",
-                            actionTitle = "Add expense",
-                            onAction = onAddExpense,
-                        )
-                    }
-                } else {
-                    items(state.filteredExpenses, key = { it.id }) { expense ->
-                        ExpenseRow(
-                            expense = expense,
-                            currency = currency,
-                            onEdit = { editingExpense = expense },
-                            onDelete = { expenseToDelete = expense },
-                        )
-                    }
-                }
-                if (state.categoryBreakdown.isNotEmpty()) {
-                    item {
-                        FinanceCard {
-                            Text("By category", fontWeight = FontWeight.SemiBold)
-                            state.categoryBreakdown.forEach { (name, amount) ->
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text(name)
-                                    Text(CurrencyFormatter.format(amount, currency))
+                    if (state.categoryBreakdown.isNotEmpty()) {
+                        item {
+                            FinanceCard {
+                                Text("By category", fontWeight = FontWeight.SemiBold)
+                                state.categoryBreakdown.forEach { (name, amount) ->
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(name)
+                                        Text(CurrencyFormatter.format(amount, currency))
+                                    }
                                 }
                             }
                         }
                     }
-                }
-                if (state.accounts.isNotEmpty()) {
-                    item {
-                        FinanceCard {
-                            Text("By account", fontWeight = FontWeight.SemiBold)
-                            state.accounts.forEach { account ->
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text(account.name)
-                                    Text(CurrencyFormatter.format(account.currentBalance, currency))
+                    if (state.accounts.isNotEmpty()) {
+                        item {
+                            FinanceCard {
+                                Text("By account", fontWeight = FontWeight.SemiBold)
+                                state.accounts.forEach { account ->
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(account.name)
+                                        Text(CurrencyFormatter.format(account.currentBalance, currency))
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
+        }
+
+        if (editingExpense != null) {
+            ExpenseFormSheet(
+                modifier = Modifier.fillMaxSize(),
+                accounts = state.accounts,
+                categories = state.categories,
+                editing = editingExpense,
+                linkedRecurring = editingExpense?.let { viewModel.linkedRecurring(it) },
+                onDismiss = { editingExpense = null },
+                onSave = { date, amount, categoryId, accountId, note, recurrence ->
+                    viewModel.saveExpenseEdit(
+                        original = editingExpense!!,
+                        date = date,
+                        amount = amount,
+                        categoryId = categoryId,
+                        accountId = accountId,
+                        note = note,
+                        recurrence = recurrence,
+                    )
+                    editingExpense = null
+                },
+            )
         }
     }
 }

@@ -7,6 +7,9 @@ import com.moneyplann.app.data.models.Account
 import com.moneyplann.app.data.models.Category
 import com.moneyplann.app.data.models.Expense
 import com.moneyplann.app.data.models.IncomeEntry
+import com.moneyplann.app.data.models.RecurrenceFrequency
+import com.moneyplann.app.data.models.RecurrenceSave
+import com.moneyplann.app.data.models.RecurringExpense
 import com.moneyplann.app.util.DateUtils
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,6 +25,7 @@ data class ExpensesUiState(
     val incomes: List<IncomeEntry> = emptyList(),
     val accounts: List<Account> = emptyList(),
     val categories: List<Category> = emptyList(),
+    val recurringExpenses: List<RecurringExpense> = emptyList(),
     val searchText: String = "",
     val selectedCategoryIds: Set<Int> = emptySet(),
     val dateRangeStart: String? = null,
@@ -115,6 +119,7 @@ class ExpensesViewModel : ViewModel() {
                 val incomes = api.fetchIncomes(year, month)
                 val accounts = api.fetchAccounts()
                 val categories = api.fetchCategories()
+                val recurring = api.fetchRecurringExpenses()
                 _state.update {
                     it.copy(
                         isLoading = false,
@@ -122,6 +127,7 @@ class ExpensesViewModel : ViewModel() {
                         incomes = incomes,
                         accounts = accounts,
                         categories = categories,
+                        recurringExpenses = recurring,
                     )
                 }
             } catch (e: Exception) {
@@ -130,14 +136,88 @@ class ExpensesViewModel : ViewModel() {
         }
     }
 
-    fun createExpense(date: String, amount: Double, categoryId: Int, accountId: Int, note: String?) {
+    fun linkedRecurring(expense: Expense): RecurringExpense? {
+        val recurringId = expense.recurringExpenseId ?: return null
+        return _state.value.recurringExpenses.firstOrNull { it.id == recurringId }
+    }
+
+    fun createExpense(
+        date: String,
+        amount: Double,
+        categoryId: Int,
+        accountId: Int,
+        note: String?,
+        recurrence: RecurrenceSave? = null,
+    ) {
         viewModelScope.launch {
             try {
-                api.createExpense(date, amount, categoryId, accountId, note)
+                val frequency = if (recurrence?.isCreate == true && recurrence.enabled) recurrence.frequency else null
+                api.createExpense(date, amount, categoryId, accountId, note, frequency)
                 load()
             } catch (_: Exception) {
             }
         }
+    }
+
+    fun saveExpenseEdit(
+        original: Expense,
+        date: String,
+        amount: Double,
+        categoryId: Int,
+        accountId: Int,
+        note: String?,
+        recurrence: RecurrenceSave?,
+    ) {
+        viewModelScope.launch {
+            val (recurrenceEnabled, recurrenceFrequency) = recurrencePayload(recurrence, original)
+            val index = _state.value.expenses.indexOfFirst { it.id == original.id }
+            if (index < 0) return@launch
+
+            val categoryName = _state.value.categories.firstOrNull { it.id == categoryId }?.name ?: original.categoryName
+            val accountName = _state.value.accounts.firstOrNull { it.id == accountId }?.name ?: original.accountName
+            val optimistic = original.copy(
+                date = date,
+                amount = amount,
+                categoryId = categoryId,
+                accountId = accountId,
+                note = note,
+                categoryName = categoryName,
+                accountName = accountName,
+            )
+            val snapshot = _state.value.expenses[index]
+            _state.update { s ->
+                s.copy(expenses = s.expenses.toMutableList().also { it[index] = optimistic })
+            }
+            try {
+                val saved = api.updateExpense(
+                    id = original.id,
+                    date = date,
+                    amount = amount,
+                    categoryId = categoryId,
+                    accountId = accountId,
+                    note = note,
+                    recurrenceEnabled = recurrenceEnabled,
+                    recurrenceFrequency = recurrenceFrequency,
+                )
+                _state.update { s ->
+                    s.copy(expenses = s.expenses.toMutableList().also { it[index] = saved })
+                }
+                load()
+            } catch (_: Exception) {
+                _state.update { s ->
+                    s.copy(expenses = s.expenses.toMutableList().also { it[index] = snapshot })
+                }
+            }
+        }
+    }
+
+    private fun recurrencePayload(
+        recurrence: RecurrenceSave?,
+        original: Expense,
+    ): Pair<Boolean?, RecurrenceFrequency?> {
+        if (recurrence == null || recurrence.isCreate) return null to null
+        if (original.recurringExpenseId == null && !recurrence.enabled) return null to null
+        return recurrence.enabled to if (recurrence.enabled) recurrence.frequency else null
     }
 
     fun deleteExpense(expense: Expense) {
