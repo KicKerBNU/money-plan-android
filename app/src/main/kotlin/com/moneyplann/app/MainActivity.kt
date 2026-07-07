@@ -14,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.google.firebase.FirebaseApp
+import com.moneyplann.app.core.AnalyticsHelper
 import com.moneyplann.app.ui.auth.LoginScreen
 import com.moneyplann.app.ui.components.LoadingStateView
 import com.moneyplann.app.ui.components.ToastHost
@@ -47,6 +48,12 @@ fun MoneyPlanRoot(activity: ComponentActivity) {
     val isReady by auth.isReady.collectAsState()
     val sessionReady by auth.sessionReady.collectAsState()
     val firebaseConfigured = remember { isFirebaseConfigured() }
+
+    LaunchedEffect(isReady, currentUser) {
+        if (isReady && currentUser == null && firebaseConfigured) {
+            AnalyticsHelper.logScreen("login")
+        }
+    }
 
     LaunchedEffect(currentUser?.uid) {
         if (currentUser != null && !sessionReady) {

@@ -95,6 +95,7 @@ dependencies {
     implementation(libs.lifecycle.runtime.ktx)
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.firebase.auth)
+    implementation(libs.firebase.analytics)
     implementation(libs.coroutines.android)
     implementation(libs.coroutines.play.services)
     implementation(libs.okhttp)

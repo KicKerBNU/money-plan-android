@@ -10,6 +10,7 @@ import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.moneyplann.app.AppContainer
+import com.moneyplann.app.core.AnalyticsHelper
 import com.moneyplann.app.R
 import com.moneyplann.app.data.api.FinanceApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +36,7 @@ class AuthRepository {
         auth.addAuthStateListener { firebaseAuth ->
             _currentUser.value = firebaseAuth.currentUser
             _isReady.value = true
+            AnalyticsHelper.syncUserId()
             if (firebaseAuth.currentUser == null) {
                 _sessionReady.value = true
             }

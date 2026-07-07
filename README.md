@@ -30,7 +30,7 @@ Google Play requires **closed testing** (12 testers, 14 days) before **productio
 - [x] App access (sign-in required + demo credentials)
 - [x] Privacy policy URL
 - [x] Content rating (IARC)
-- [x] Data safety (in progress / submitted as applicable)
+- [x] Data safety — see **`ANALYTICS.md`** at repo root for Play Console answers (Firebase usage analytics, no ads)
 - [x] Main store listing — name, descriptions, contact email, tags
 - [x] Listing assets — app icon, feature graphic, phone screenshots (Expenses, Chat, Accounts)
 - [x] ASO listing polish — full description, short description, Chat screenshot on **Store listings**

@@ -16,6 +16,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -24,6 +25,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.moneyplann.app.AppContainer
+import com.moneyplann.app.core.AnalyticsHelper
 import com.moneyplann.app.data.models.Account
 import com.moneyplann.app.data.models.Category
 import com.moneyplann.app.ui.accounts.AccountsScreen
@@ -57,6 +59,16 @@ fun AppNavigation(modifier: Modifier = Modifier) {
     var showRecurringIncomes by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val api = AppContainer.financeApi
+
+    LaunchedEffect(selectedTab) {
+        when (AppTab.entries[selectedTab]) {
+            AppTab.EXPENSES -> AnalyticsHelper.logScreen("expenses")
+            AppTab.INCOME -> AnalyticsHelper.logScreen("income")
+            AppTab.CHAT -> AnalyticsHelper.logScreen("chatbot")
+            AppTab.ACCOUNTS -> AnalyticsHelper.logScreen("accounts")
+            AppTab.ADD -> Unit
+        }
+    }
 
     fun openAddExpense() {
         showAddExpense = true
