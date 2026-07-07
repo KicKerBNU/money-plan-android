@@ -27,6 +27,7 @@ fun SettingsMenu(modifier: Modifier = Modifier) {
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var isDeleting by remember { mutableStateOf(false) }
     val openRecurringExpenses = LocalOpenRecurringExpenses.current
+    val openRecurringIncomes = LocalOpenRecurringIncomes.current
     val scope = rememberCoroutineScope()
     val themePrefs = AppContainer.themePreferences
     val moneyPrefs = AppContainer.moneyPreferences
@@ -69,6 +70,10 @@ fun SettingsMenu(modifier: Modifier = Modifier) {
         DropdownMenuItem(
             text = { Text("Recurring expenses") },
             onClick = { expanded = false; openRecurringExpenses() },
+        )
+        DropdownMenuItem(
+            text = { Text("Recurring income") },
+            onClick = { expanded = false; openRecurringIncomes() },
         )
         DropdownMenuItem(
             text = { Text("Delete account") },

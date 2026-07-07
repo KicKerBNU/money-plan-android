@@ -80,6 +80,20 @@ data class IncomeEntry(
     val accountId: Int? = null,
     val accountName: String? = null,
     val note: String? = null,
+    val recurringIncomeId: Int? = null,
+)
+
+@Serializable
+data class RecurringIncome(
+    val id: Int,
+    val amount: Double,
+    val accountId: Int,
+    val accountName: String,
+    val note: String? = null,
+    val frequency: RecurrenceFrequency,
+    val startDate: String,
+    val nextDate: String,
+    val active: Boolean,
 )
 
 @Serializable

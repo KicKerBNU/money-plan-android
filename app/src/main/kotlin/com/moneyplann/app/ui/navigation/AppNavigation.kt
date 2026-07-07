@@ -32,7 +32,9 @@ import com.moneyplann.app.ui.expenses.ExpenseFormSheet
 import com.moneyplann.app.ui.expenses.ExpensesScreen
 import com.moneyplann.app.ui.income.IncomeScreen
 import com.moneyplann.app.ui.recurring.RecurringExpensesScreen
+import com.moneyplann.app.ui.recurring.RecurringIncomesScreen
 import com.moneyplann.app.ui.settings.LocalOpenRecurringExpenses
+import com.moneyplann.app.ui.settings.LocalOpenRecurringIncomes
 import kotlinx.coroutines.launch
 
 private enum class AppTab(val label: String) {
@@ -52,6 +54,7 @@ fun AppNavigation(modifier: Modifier = Modifier) {
     var addCategories by remember { mutableStateOf(emptyList<Category>()) }
     var expensesReloadKey by remember { mutableIntStateOf(0) }
     var showRecurringExpenses by remember { mutableStateOf(false) }
+    var showRecurringIncomes by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val api = AppContainer.financeApi
 
@@ -69,6 +72,7 @@ fun AppNavigation(modifier: Modifier = Modifier) {
     Box(modifier.fillMaxSize()) {
         CompositionLocalProvider(
             LocalOpenRecurringExpenses provides { showRecurringExpenses = true },
+            LocalOpenRecurringIncomes provides { showRecurringIncomes = true },
         ) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
@@ -146,6 +150,13 @@ fun AppNavigation(modifier: Modifier = Modifier) {
             RecurringExpensesScreen(
                 modifier = Modifier.fillMaxSize(),
                 onDismiss = { showRecurringExpenses = false },
+            )
+        }
+
+        if (showRecurringIncomes) {
+            RecurringIncomesScreen(
+                modifier = Modifier.fillMaxSize(),
+                onDismiss = { showRecurringIncomes = false },
             )
         }
     }

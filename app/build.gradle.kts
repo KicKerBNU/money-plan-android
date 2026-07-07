@@ -23,8 +23,8 @@ android {
         applicationId = "com.moneyplann.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.0.0"
+        versionCode = 6
+        versionName = "1.0.2"
         buildConfigField(
             "String",
             "API_BASE_URL",

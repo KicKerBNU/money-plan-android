@@ -1,6 +1,7 @@
 package com.moneyplann.app.ui.income
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -8,28 +9,28 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -37,15 +38,19 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.moneyplann.app.AppContainer
+import com.moneyplann.app.data.models.Account
 import com.moneyplann.app.data.models.IncomeEntry
+import com.moneyplann.app.data.models.RecurrenceFrequency
+import com.moneyplann.app.data.models.RecurrenceSave
+import com.moneyplann.app.data.models.RecurringIncome
 import com.moneyplann.app.ui.components.ErrorStateView
 import com.moneyplann.app.ui.components.FinanceCard
 import com.moneyplann.app.ui.components.KpiView
@@ -54,24 +59,31 @@ import com.moneyplann.app.ui.settings.SettingsMenu
 import com.moneyplann.app.ui.theme.AppColors
 import com.moneyplann.app.util.CurrencyFormatter
 import com.moneyplann.app.util.DateUtils
-import com.moneyplann.app.util.DefaultAccountPicker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.time.Instant
-import java.time.LocalDate
-import java.time.ZoneId
+import java.time.YearMonth
+import java.time.format.TextStyle
+import java.util.Locale
 
 data class IncomeUiState(
     val isLoading: Boolean = true,
     val errorMessage: String? = null,
     val entries: List<IncomeEntry> = emptyList(),
-    val accounts: List<com.moneyplann.app.data.models.Account> = emptyList(),
+    val accounts: List<Account> = emptyList(),
+    val recurringIncomes: List<RecurringIncome> = emptyList(),
+    val year: Int = DateUtils.currentYearMonth().first,
+    val month: Int = DateUtils.currentYearMonth().second,
 ) {
     val total: Double get() = entries.sumOf { it.amount }
     val lastDate: String? get() = entries.maxByOrNull { it.date }?.date
+
+    val periodLabel: String
+        get() = YearMonth.of(year, month)
+            .month
+            .getDisplayName(TextStyle.FULL, Locale.getDefault()) + " $year"
 }
 
 class IncomeViewModel : ViewModel() {
@@ -83,12 +95,17 @@ class IncomeViewModel : ViewModel() {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, errorMessage = null) }
             try {
-                val (year, month) = DateUtils.currentYearMonth()
+                val year = _state.value.year
+                val month = _state.value.month
+                val entries = api.fetchIncomes(year, month)
+                val accounts = api.fetchAccounts()
+                val recurring = runCatching { api.fetchRecurringIncomes() }.getOrDefault(emptyList())
                 _state.update {
                     it.copy(
                         isLoading = false,
-                        entries = api.fetchIncomes(year, month),
-                        accounts = api.fetchAccounts(),
+                        entries = entries,
+                        accounts = accounts,
+                        recurringIncomes = recurring,
                     )
                 }
             } catch (e: Exception) {
@@ -97,10 +114,29 @@ class IncomeViewModel : ViewModel() {
         }
     }
 
-    fun create(date: String, amount: Double, accountId: Int, note: String?, onSuccess: () -> Unit = {}) {
+    fun shiftPeriod(delta: Int) {
+        val current = YearMonth.of(_state.value.year, _state.value.month).plusMonths(delta.toLong())
+        _state.update { it.copy(year = current.year, month = current.monthValue) }
+        load()
+    }
+
+    fun linkedRecurring(entry: IncomeEntry): RecurringIncome? {
+        val recurringId = entry.recurringIncomeId ?: return null
+        return _state.value.recurringIncomes.firstOrNull { it.id == recurringId }
+    }
+
+    fun create(
+        date: String,
+        amount: Double,
+        accountId: Int,
+        note: String?,
+        recurrence: RecurrenceSave?,
+        onSuccess: () -> Unit = {},
+    ) {
         viewModelScope.launch {
             try {
-                api.createIncome(date, amount, accountId, note)
+                val frequency = if (recurrence?.isCreate == true && recurrence.enabled) recurrence.frequency else null
+                api.createIncome(date, amount, accountId, note, frequency)
                 load()
                 onSuccess()
             } catch (_: Exception) {
@@ -108,16 +144,41 @@ class IncomeViewModel : ViewModel() {
         }
     }
 
-    fun update(entry: IncomeEntry, onSuccess: () -> Unit = {}) {
+    fun saveEdit(
+        original: IncomeEntry,
+        date: String,
+        amount: Double,
+        accountId: Int,
+        note: String?,
+        recurrence: RecurrenceSave?,
+        onSuccess: () -> Unit = {},
+    ) {
         viewModelScope.launch {
-            val accountId = entry.accountId ?: return@launch
+            val (recurrenceEnabled, recurrenceFrequency) = recurrencePayload(recurrence, original)
             try {
-                api.updateIncome(entry.id, entry.date, entry.amount, accountId, entry.note)
+                api.updateIncome(
+                    id = original.id,
+                    date = date,
+                    amount = amount,
+                    accountId = accountId,
+                    note = note,
+                    recurrenceEnabled = recurrenceEnabled,
+                    recurrenceFrequency = recurrenceFrequency,
+                )
                 load()
                 onSuccess()
             } catch (_: Exception) {
             }
         }
+    }
+
+    private fun recurrencePayload(
+        recurrence: RecurrenceSave?,
+        original: IncomeEntry,
+    ): Pair<Boolean?, RecurrenceFrequency?> {
+        if (recurrence == null || recurrence.isCreate) return null to null
+        if (original.recurringIncomeId == null && !recurrence.enabled) return null to null
+        return recurrence.enabled to if (recurrence.enabled) recurrence.frequency else null
     }
 
     fun delete(entry: IncomeEntry) {
@@ -139,26 +200,14 @@ class IncomeViewModel : ViewModel() {
 fun IncomeScreen(modifier: Modifier = Modifier, viewModel: IncomeViewModel = viewModel()) {
     val state by viewModel.state.collectAsState()
     val currency = AppContainer.moneyPreferences.activeCurrency
-    var amountText by remember { mutableStateOf("") }
-    var note by remember { mutableStateOf("") }
-    var accountId by remember(state.accounts) {
-        mutableStateOf(DefaultAccountPicker.pick(state.accounts)?.id ?: 0)
-    }
-    var editing by remember { mutableStateOf<IncomeEntry?>(null) }
+    var showAddSheet by remember { mutableStateOf(false) }
+    var editingEntry by remember { mutableStateOf<IncomeEntry?>(null) }
     var toDelete by remember { mutableStateOf<IncomeEntry?>(null) }
-    var accountExpanded by remember { mutableStateOf(false) }
-    var formError by remember { mutableStateOf("") }
-
-    LaunchedEffect(state.accounts) {
-        if (accountId == 0) {
-            DefaultAccountPicker.pick(state.accounts)?.id?.let { accountId = it }
-        }
-    }
 
     LaunchedEffect(Unit) { viewModel.load() }
 
     if (toDelete != null) {
-        androidx.compose.material3.AlertDialog(
+        AlertDialog(
             onDismissRequest = { toDelete = null },
             title = { Text("Delete income?") },
             text = { Text("This income entry will be permanently removed.") },
@@ -172,162 +221,168 @@ fun IncomeScreen(modifier: Modifier = Modifier, viewModel: IncomeViewModel = vie
         )
     }
 
-    Scaffold(
-        modifier = modifier,
-        topBar = {
-            TopAppBar(
-                title = { Text("Income") },
-                actions = { SettingsMenu() },
-            )
-        },
-    ) { padding ->
-        when {
-            state.isLoading -> LoadingStateView(Modifier.padding(padding))
-            state.errorMessage != null -> ErrorStateView(state.errorMessage!!, Modifier.padding(padding))
-            else -> LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                item {
-                    Text("Track money coming in this month.", color = AppColors.Muted)
+    Box(modifier.fillMaxSize()) {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            topBar = {
+                TopAppBar(
+                    title = { Text("Income") },
+                    actions = { SettingsMenu() },
+                )
+            },
+            floatingActionButton = {
+                FloatingActionButton(onClick = { showAddSheet = true }) {
+                    Icon(Icons.Default.Add, contentDescription = "Add income")
                 }
-                item {
-                    FinanceCard {
-                        KpiView("Total income", CurrencyFormatter.format(state.total, currency))
-                        state.lastDate?.let {
-                            Text(
-                                "${state.entries.size} entries · last on ${DateUtils.formatShortDate(it)}",
-                                color = AppColors.Muted,
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
+            },
+        ) { padding ->
+            when {
+                state.isLoading -> LoadingStateView(Modifier.padding(padding))
+                state.errorMessage != null -> ErrorStateView(state.errorMessage!!, Modifier.padding(padding))
+                else -> LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    item {
+                        Text("Salary, freelance, rent, and other money in.", color = AppColors.Muted)
                     }
-                }
-                item {
-                    FinanceCard {
-                        Text(if (editing == null) "Quick add" else "Edit income", fontWeight = FontWeight.SemiBold)
-                        val initialDateMillis = remember(editing) {
-                            editing?.date?.let { DateUtils.parseLocalIsoDate(it) }
-                                ?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli()
-                                ?: LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-                        }
-                        val dateState = rememberDatePickerState(initialSelectedDateMillis = initialDateMillis)
-                        LaunchedEffect(initialDateMillis) {
-                            dateState.selectedDateMillis = initialDateMillis
-                        }
-                        DatePicker(state = dateState)
-                        OutlinedTextField(
-                            value = amountText,
-                            onValueChange = { amountText = it },
-                            label = { Text("Amount") },
-                            modifier = Modifier.fillMaxWidth(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            singleLine = true,
-                        )
-                        ExposedDropdownMenuBox(expanded = accountExpanded, onExpandedChange = { accountExpanded = it }) {
-                            OutlinedTextField(
-                                value = state.accounts.firstOrNull { it.id == accountId }?.name.orEmpty(),
-                                onValueChange = {},
-                                readOnly = true,
-                                label = { Text("Account") },
-                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(accountExpanded) },
-                                modifier = Modifier.menuAnchor().fillMaxWidth(),
-                            )
-                            ExposedDropdownMenu(expanded = accountExpanded, onDismissRequest = { accountExpanded = false }) {
-                                state.accounts.forEach { account ->
-                                    DropdownMenuItem(
-                                        text = { Text(account.name) },
-                                        onClick = { accountId = account.id; accountExpanded = false },
-                                    )
-                                }
+                    item {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            IconButton(onClick = { viewModel.shiftPeriod(-1) }) {
+                                Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "Previous month")
+                            }
+                            Text(state.periodLabel, fontWeight = FontWeight.SemiBold)
+                            IconButton(onClick = { viewModel.shiftPeriod(1) }) {
+                                Icon(Icons.Default.KeyboardArrowRight, contentDescription = "Next month")
                             }
                         }
-                        OutlinedTextField(
-                            value = note,
-                            onValueChange = { note = it },
-                            label = { Text("Note") },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        if (formError.isNotBlank()) {
-                            Text(formError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = {
-                                formError = ""
-                                val amount = amountText.replace(",", ".").toDoubleOrNull()
-                                val dateMillis = dateState.selectedDateMillis
-                                if (amount == null || amount <= 0.0 || dateMillis == null || accountId == 0) {
-                                    formError = "Enter an amount and choose an account."
-                                    return@Button
-                                }
-                                val date = DateUtils.localIsoDate(
-                                    Instant.ofEpochMilli(dateMillis).atZone(ZoneId.systemDefault()).toLocalDate(),
+                    }
+                    item {
+                        FinanceCard {
+                            KpiView("Total income", CurrencyFormatter.format(state.total, currency))
+                            state.lastDate?.let {
+                                Text(
+                                    "${state.entries.size} entries · last on ${DateUtils.formatShortDate(it)}",
+                                    color = AppColors.Muted,
+                                    style = MaterialTheme.typography.bodySmall,
                                 )
-                                val clearForm = {
-                                    amountText = ""
-                                    note = ""
-                                    editing = null
-                                    formError = ""
-                                }
-                                if (editing == null) {
-                                    viewModel.create(date, amount, accountId, note.ifBlank { null }, onSuccess = clearForm)
-                                } else {
-                                    viewModel.update(
-                                        editing!!.copy(
-                                            date = date,
-                                            amount = amount,
-                                            accountId = accountId,
-                                            note = note.ifBlank { null },
-                                            accountName = state.accounts.firstOrNull { it.id == accountId }?.name,
-                                        ),
-                                        onSuccess = clearForm,
-                                    )
-                                }
-                            }) { Text(if (editing == null) "Add income" else "Save changes") }
-                            if (editing != null) {
-                                TextButton(onClick = { editing = null; amountText = ""; note = ""; formError = "" }) {
-                                    Text("Cancel edit")
-                                }
+                            }
+                            Button(onClick = { showAddSheet = true }, modifier = Modifier.fillMaxWidth()) {
+                                Text("Add income")
                             }
                         }
                     }
-                }
-                items(state.entries, key = { it.id }) { entry ->
-                    IncomeRow(
-                        entry = entry,
-                        currency = currency,
-                        onEdit = {
-                            editing = entry
-                            amountText = entry.amount.toString()
-                            note = entry.note.orEmpty()
-                            accountId = entry.accountId ?: accountId
-                        },
-                        onDelete = { toDelete = entry },
-                    )
+                    if (state.entries.isEmpty()) {
+                        item {
+                            FinanceCard {
+                                Text("No income this month", fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    "Add salary, freelance payments, rent, or any other money coming in.",
+                                    color = AppColors.Muted,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                        }
+                    } else {
+                        items(state.entries, key = { it.id }) { entry ->
+                            IncomeRow(
+                                entry = entry,
+                                currency = currency,
+                                isRecurring = entry.recurringIncomeId != null,
+                                onEdit = { editingEntry = entry },
+                                onDelete = { toDelete = entry },
+                            )
+                        }
+                    }
                 }
             }
+        }
+
+        if (showAddSheet) {
+            IncomeFormSheet(
+                modifier = Modifier.fillMaxSize(),
+                accounts = state.accounts,
+                onDismiss = { showAddSheet = false },
+                onSave = { date, amount, accountId, note, recurrence ->
+                    viewModel.create(date, amount, accountId, note, recurrence) {
+                        showAddSheet = false
+                    }
+                },
+            )
+        }
+
+        editingEntry?.let { entry ->
+            IncomeFormSheet(
+                modifier = Modifier.fillMaxSize(),
+                accounts = state.accounts,
+                editing = entry,
+                linkedRecurring = viewModel.linkedRecurring(entry),
+                onDismiss = { editingEntry = null },
+                onSave = { date, amount, accountId, note, recurrence ->
+                    viewModel.saveEdit(entry, date, amount, accountId, note, recurrence) {
+                        editingEntry = null
+                    }
+                },
+            )
         }
     }
 }
 
 @Composable
-private fun IncomeRow(entry: IncomeEntry, currency: String, onEdit: () -> Unit, onDelete: () -> Unit) {
+private fun IncomeRow(
+    entry: IncomeEntry,
+    currency: String,
+    isRecurring: Boolean,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
     var expanded by remember { mutableStateOf(false) }
     FinanceCard {
         ListItem(
-            headlineContent = { Text(CurrencyFormatter.format(entry.amount, currency), fontWeight = FontWeight.SemiBold) },
+            headlineContent = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        CurrencyFormatter.format(entry.amount, currency),
+                        fontWeight = FontWeight.SemiBold,
+                        color = AppColors.Positive,
+                    )
+                    if (isRecurring) {
+                        Icon(
+                            Icons.Default.Repeat,
+                            contentDescription = "Recurring income",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(0.dp),
+                        )
+                    }
+                }
+            },
             supportingContent = {
                 Column {
-                    Text(entry.accountName ?: "Account")
-                    Text(DateUtils.formatShortDate(entry.date), color = AppColors.Muted, style = MaterialTheme.typography.bodySmall)
-                    entry.note?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    Text(entry.note?.takeIf { it.isNotBlank() } ?: entry.accountName ?: "Income")
+                    Text(
+                        "${DateUtils.formatShortDate(entry.date)} · ${entry.accountName.orEmpty()}",
+                        color = AppColors.Muted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
             },
             trailingContent = {
                 IconButton(onClick = { expanded = true }) { Icon(Icons.Default.MoreVert, null) }
                 DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                    DropdownMenuItem(text = { Text("Edit") }, onClick = { expanded = false; onEdit() }, leadingIcon = { Icon(Icons.Default.Edit, null) })
-                    DropdownMenuItem(text = { Text("Delete") }, onClick = { expanded = false; onDelete() }, leadingIcon = { Icon(Icons.Default.Delete, null) })
+                    DropdownMenuItem(
+                        text = { Text("Edit") },
+                        onClick = { expanded = false; onEdit() },
+                        leadingIcon = { Icon(Icons.Default.Edit, null) },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete") },
+                        onClick = { expanded = false; onDelete() },
+                        leadingIcon = { Icon(Icons.Default.Delete, null) },
+                    )
                 }
             },
         )

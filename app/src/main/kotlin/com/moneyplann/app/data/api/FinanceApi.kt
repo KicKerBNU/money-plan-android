@@ -12,6 +12,7 @@ import com.moneyplann.app.data.models.IncomeEntry
 import com.moneyplann.app.data.models.MonthlyExpensesStats
 import com.moneyplann.app.data.models.RecurrenceFrequency
 import com.moneyplann.app.data.models.RecurringExpense
+import com.moneyplann.app.data.models.RecurringIncome
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -119,18 +120,49 @@ class FinanceApi(private val client: ApiClient) {
             silentError = true,
         ).data
 
-    suspend fun createIncome(date: String, amount: Double, accountId: Int, note: String?): IncomeEntry =
+    suspend fun createIncome(
+        date: String,
+        amount: Double,
+        accountId: Int,
+        note: String?,
+        recurrenceFrequency: RecurrenceFrequency? = null,
+    ): IncomeEntry =
         client.fetchJson<DataResponse<IncomeEntry>>(
             path = "/v1/incomes",
             method = "POST",
-            body = encode(CreateIncomeBody(date, amount, accountId, note)),
+            body = encode(
+                CreateIncomeBody(
+                    date = date,
+                    amount = amount,
+                    accountId = accountId,
+                    note = note,
+                    recurrenceFrequency = recurrenceFrequency,
+                ),
+            ),
         ).data
 
-    suspend fun updateIncome(id: Int, date: String, amount: Double, accountId: Int, note: String?): IncomeEntry =
+    suspend fun updateIncome(
+        id: Int,
+        date: String,
+        amount: Double,
+        accountId: Int,
+        note: String?,
+        recurrenceEnabled: Boolean? = null,
+        recurrenceFrequency: RecurrenceFrequency? = null,
+    ): IncomeEntry =
         client.fetchJson<DataResponse<IncomeEntry>>(
             path = "/v1/incomes/$id",
             method = "PUT",
-            body = encode(CreateIncomeBody(date, amount, accountId, note)),
+            body = encode(
+                UpdateIncomeBody(
+                    date = date,
+                    amount = amount,
+                    accountId = accountId,
+                    note = note,
+                    recurrenceEnabled = recurrenceEnabled,
+                    recurrenceFrequency = recurrenceFrequency,
+                ),
+            ),
         ).data
 
     suspend fun deleteIncome(id: Int) {
@@ -205,6 +237,44 @@ class FinanceApi(private val client: ApiClient) {
     suspend fun deleteRecurringExpense(id: Int) {
         client.fetchVoid("/v1/recurring-expenses/$id", method = "DELETE")
     }
+
+    suspend fun fetchRecurringIncomes(): List<RecurringIncome> =
+        client.fetchJson<DataResponse<List<RecurringIncome>>>("/v1/recurring-incomes", silentError = true).data
+
+    suspend fun fetchRecurringIncome(id: Int): RecurringIncome =
+        client.fetchJson<DataResponse<RecurringIncome>>("/v1/recurring-incomes/$id").data
+
+    suspend fun setRecurringIncomeActive(id: Int, active: Boolean): RecurringIncome =
+        client.fetchJson<DataResponse<RecurringIncome>>(
+            path = "/v1/recurring-incomes/$id",
+            method = "PATCH",
+            body = encode(RecurringActiveBody(active)),
+        ).data
+
+    suspend fun updateRecurringIncome(
+        id: Int,
+        amount: Double,
+        accountId: Int,
+        note: String?,
+        frequency: RecurrenceFrequency,
+        startDate: String,
+    ): RecurringIncome = client.fetchJson<DataResponse<RecurringIncome>>(
+        path = "/v1/recurring-incomes/$id",
+        method = "PUT",
+        body = encode(
+            UpdateRecurringIncomeBody(
+                amount = amount,
+                accountId = accountId,
+                note = note,
+                frequency = frequency,
+                startDate = startDate,
+            ),
+        ),
+    ).data
+
+    suspend fun deleteRecurringIncome(id: Int) {
+        client.fetchVoid("/v1/recurring-incomes/$id", method = "DELETE")
+    }
 }
 
 @Serializable
@@ -243,5 +313,31 @@ internal data class UpdateRecurringExpenseBody(
 @Serializable internal data class ReorderExpensesBody(val year: Int, val month: Int, val orderedIds: List<Int>)
 @Serializable internal data class NameBody(val name: String)
 @Serializable internal data class EmptyBody(val placeholder: String? = null)
-@Serializable internal data class CreateIncomeBody(val date: String, val amount: Double, val accountId: Int, val note: String? = null)
+@Serializable
+internal data class CreateIncomeBody(
+    val date: String,
+    val amount: Double,
+    val accountId: Int,
+    val note: String? = null,
+    val recurrenceFrequency: RecurrenceFrequency? = null,
+)
+
+@Serializable
+internal data class UpdateIncomeBody(
+    val date: String,
+    val amount: Double,
+    val accountId: Int,
+    val note: String? = null,
+    val recurrenceEnabled: Boolean? = null,
+    val recurrenceFrequency: RecurrenceFrequency? = null,
+)
+
+@Serializable
+internal data class UpdateRecurringIncomeBody(
+    val amount: Double,
+    val accountId: Int,
+    val note: String? = null,
+    val frequency: RecurrenceFrequency,
+    val startDate: String,
+)
 @Serializable internal data class ChatBody(val messages: List<ExpenseChatRequestMessage>, val clientToday: String)
