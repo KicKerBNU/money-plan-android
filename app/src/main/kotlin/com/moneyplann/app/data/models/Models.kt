@@ -17,6 +17,7 @@ data class Category(
     val id: Int,
     val name: String,
     val isDefault: Boolean,
+    val icon: String? = null,
 )
 
 @Serializable

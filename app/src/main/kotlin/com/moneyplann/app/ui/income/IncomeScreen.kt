@@ -1,14 +1,20 @@
 package com.moneyplann.app.ui.income
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -18,19 +24,17 @@ import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -40,8 +44,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -51,12 +61,14 @@ import com.moneyplann.app.data.models.IncomeEntry
 import com.moneyplann.app.data.models.RecurrenceFrequency
 import com.moneyplann.app.data.models.RecurrenceSave
 import com.moneyplann.app.data.models.RecurringIncome
+import com.moneyplann.app.ui.components.EmptyStateView
 import com.moneyplann.app.ui.components.ErrorStateView
-import com.moneyplann.app.ui.components.FinanceCard
-import com.moneyplann.app.ui.components.KpiView
+import com.moneyplann.app.ui.components.IncomeIconView
 import com.moneyplann.app.ui.components.LoadingStateView
+import com.moneyplann.app.ui.components.ScreenHeader
 import com.moneyplann.app.ui.settings.SettingsMenu
 import com.moneyplann.app.ui.theme.AppColors
+import com.moneyplann.app.ui.theme.IncomeTheme
 import com.moneyplann.app.util.CurrencyFormatter
 import com.moneyplann.app.util.DateUtils
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -78,7 +90,9 @@ data class IncomeUiState(
     val month: Int = DateUtils.currentYearMonth().second,
 ) {
     val total: Double get() = entries.sumOf { it.amount }
-    val lastDate: String? get() = entries.maxByOrNull { it.date }?.date
+
+    val sortedEntries: List<IncomeEntry>
+        get() = entries.sortedByDescending { it.date }
 
     val periodLabel: String
         get() = YearMonth.of(year, month)
@@ -187,6 +201,7 @@ class IncomeViewModel : ViewModel() {
             _state.update { it.copy(entries = it.entries.filterNot { e -> e.id == entry.id }) }
             try {
                 api.deleteIncome(entry.id)
+                load()
             } catch (_: Exception) {
                 _state.update { it.copy(entries = snapshot) }
                 load()
@@ -203,6 +218,7 @@ fun IncomeScreen(modifier: Modifier = Modifier, viewModel: IncomeViewModel = vie
     var showAddSheet by remember { mutableStateOf(false) }
     var editingEntry by remember { mutableStateOf<IncomeEntry?>(null) }
     var toDelete by remember { mutableStateOf<IncomeEntry?>(null) }
+    val screenBackground = IncomeTheme.ScreenBackground
 
     LaunchedEffect(Unit) { viewModel.load() }
 
@@ -214,8 +230,13 @@ fun IncomeScreen(modifier: Modifier = Modifier, viewModel: IncomeViewModel = vie
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.delete(toDelete!!)
+                    if (editingEntry?.id == toDelete?.id) {
+                        editingEntry = null
+                    }
                     toDelete = null
-                }) { Text("Delete") }
+                }) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
             },
             dismissButton = { TextButton(onClick = { toDelete = null }) { Text("Cancel") } },
         )
@@ -224,79 +245,62 @@ fun IncomeScreen(modifier: Modifier = Modifier, viewModel: IncomeViewModel = vie
     Box(modifier.fillMaxSize()) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
+            containerColor = screenBackground,
             topBar = {
-                TopAppBar(
-                    title = { Text("Income") },
-                    actions = { SettingsMenu() },
+                ScreenHeader(
+                    title = "Income",
+                    backgroundColor = screenBackground,
+                    actions = {
+                        IconButton(onClick = { showAddSheet = true }) {
+                            Icon(Icons.Default.Add, contentDescription = "Add income")
+                        }
+                        SettingsMenu()
+                    },
                 )
-            },
-            floatingActionButton = {
-                FloatingActionButton(onClick = { showAddSheet = true }) {
-                    Icon(Icons.Default.Add, contentDescription = "Add income")
-                }
             },
         ) { padding ->
             when {
                 state.isLoading -> LoadingStateView(Modifier.padding(padding))
                 state.errorMessage != null -> ErrorStateView(state.errorMessage!!, Modifier.padding(padding))
-                else -> LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                else -> PullToRefreshBox(
+                    isRefreshing = false,
+                    onRefresh = { viewModel.load() },
+                    modifier = Modifier.fillMaxSize().padding(padding),
                 ) {
-                    item {
-                        Text("Salary, freelance, rent, and other money in.", color = AppColors.Muted)
-                    }
-                    item {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            IconButton(onClick = { viewModel.shiftPeriod(-1) }) {
-                                Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "Previous month")
-                            }
-                            Text(state.periodLabel, fontWeight = FontWeight.SemiBold)
-                            IconButton(onClick = { viewModel.shiftPeriod(1) }) {
-                                Icon(Icons.Default.KeyboardArrowRight, contentDescription = "Next month")
-                            }
-                        }
-                    }
-                    item {
-                        FinanceCard {
-                            KpiView("Total income", CurrencyFormatter.format(state.total, currency))
-                            state.lastDate?.let {
-                                Text(
-                                    "${state.entries.size} entries · last on ${DateUtils.formatShortDate(it)}",
-                                    color = AppColors.Muted,
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                            }
-                            Button(onClick = { showAddSheet = true }, modifier = Modifier.fillMaxWidth()) {
-                                Text("Add income")
-                            }
-                        }
-                    }
-                    if (state.entries.isEmpty()) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
                         item {
-                            FinanceCard {
-                                Text("No income this month", fontWeight = FontWeight.SemiBold)
-                                Text(
-                                    "Add salary, freelance payments, rent, or any other money coming in.",
-                                    color = AppColors.Muted,
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                            }
-                        }
-                    } else {
-                        items(state.entries, key = { it.id }) { entry ->
-                            IncomeRow(
-                                entry = entry,
-                                currency = currency,
-                                isRecurring = entry.recurringIncomeId != null,
-                                onEdit = { editingEntry = entry },
-                                onDelete = { toDelete = entry },
+                            PeriodPicker(
+                                periodLabel = state.periodLabel,
+                                onPrev = { viewModel.shiftPeriod(-1) },
+                                onNext = { viewModel.shiftPeriod(1) },
                             )
                         }
+                        item {
+                            TotalIncomeSummary(total = state.total, currency = currency)
+                        }
+                        if (state.sortedEntries.isEmpty()) {
+                            item {
+                                EmptyStateView(
+                                    title = "No income this month",
+                                    message = "Add salary, freelance payments, rent, or any other money coming in.",
+                                    actionTitle = "Add income",
+                                    onAction = { showAddSheet = true },
+                                )
+                            }
+                        } else {
+                            item {
+                                RecentIncomeSection(
+                                    entries = state.sortedEntries,
+                                    currency = currency,
+                                    onEdit = { editingEntry = it },
+                                    onDelete = { toDelete = it },
+                                )
+                            }
+                        }
+                        item { Spacer(Modifier.height(16.dp)) }
                     }
                 }
             }
@@ -322,6 +326,7 @@ fun IncomeScreen(modifier: Modifier = Modifier, viewModel: IncomeViewModel = vie
                 editing = entry,
                 linkedRecurring = viewModel.linkedRecurring(entry),
                 onDismiss = { editingEntry = null },
+                onDelete = { toDelete = entry },
                 onSave = { date, amount, accountId, note, recurrence ->
                     viewModel.saveEdit(entry, date, amount, accountId, note, recurrence) {
                         editingEntry = null
@@ -333,58 +338,182 @@ fun IncomeScreen(modifier: Modifier = Modifier, viewModel: IncomeViewModel = vie
 }
 
 @Composable
-private fun IncomeRow(
+private fun PeriodPicker(periodLabel: String, onPrev: () -> Unit, onNext: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onPrev) {
+            Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "Previous month", tint = MaterialTheme.colorScheme.onSurface)
+        }
+        Text(periodLabel, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+        IconButton(onClick = onNext) {
+            Icon(Icons.Default.KeyboardArrowRight, contentDescription = "Next month", tint = MaterialTheme.colorScheme.onSurface)
+        }
+    }
+}
+
+@Composable
+private fun TotalIncomeSummary(total: Double, currency: String) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            "Total income",
+            style = MaterialTheme.typography.labelMedium,
+            color = AppColors.Muted,
+        )
+        Text(
+            text = CurrencyFormatter.format(total, currency),
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .background(IncomeTheme.TotalPillBackground)
+                .padding(horizontal = 28.dp, vertical = 12.dp),
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            color = IncomeTheme.TotalPillText,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable
+private fun RecentIncomeSection(
+    entries: List<IncomeEntry>,
+    currency: String,
+    onEdit: (IncomeEntry) -> Unit,
+    onDelete: (IncomeEntry) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            "RECENT INCOME",
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = AppColors.Muted,
+            letterSpacing = 0.6.sp,
+            modifier = Modifier.padding(horizontal = 4.dp),
+        )
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .shadow(
+                    elevation = IncomeTheme.ListElevation,
+                    shape = RoundedCornerShape(16.dp),
+                    ambientColor = Color.Black.copy(alpha = 0.08f),
+                    spotColor = Color.Black.copy(alpha = 0.08f),
+                )
+                .clip(RoundedCornerShape(16.dp))
+                .background(IncomeTheme.ListGroupBackground)
+                .border(1.dp, IncomeTheme.ListBorderColor, RoundedCornerShape(16.dp)),
+        ) {
+            entries.forEachIndexed { index, entry ->
+                IncomeRowContent(
+                    entry = entry,
+                    currency = currency,
+                    isRecurring = entry.recurringIncomeId != null,
+                    onEdit = { onEdit(entry) },
+                    onDelete = { onDelete(entry) },
+                )
+                if (index < entries.lastIndex) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 62.dp),
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun IncomeRowContent(
     entry: IncomeEntry,
     currency: String,
     isRecurring: Boolean,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    FinanceCard {
-        ListItem(
-            headlineContent = {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    val title = entry.note?.takeIf { it.isNotBlank() } ?: entry.accountName ?: "Income"
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            Modifier
+                .weight(1f)
+                .clickable(onClick = onEdit),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            IncomeIconView(
+                label = title,
+                chipBaseSurface = IncomeTheme.ListGroupBackground,
+            )
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
                     Text(
-                        CurrencyFormatter.format(entry.amount, currency),
+                        title,
                         fontWeight = FontWeight.SemiBold,
-                        color = AppColors.Positive,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     if (isRecurring) {
                         Icon(
                             Icons.Default.Repeat,
                             contentDescription = "Recurring income",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(0.dp),
+                            tint = AppColors.Muted,
+                            modifier = Modifier.size(14.dp),
                         )
                     }
                 }
-            },
-            supportingContent = {
-                Column {
-                    Text(entry.note?.takeIf { it.isNotBlank() } ?: entry.accountName ?: "Income")
-                    Text(
-                        "${DateUtils.formatShortDate(entry.date)} · ${entry.accountName.orEmpty()}",
-                        color = AppColors.Muted,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-            },
-            trailingContent = {
-                IconButton(onClick = { expanded = true }) { Icon(Icons.Default.MoreVert, null) }
-                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                    DropdownMenuItem(
-                        text = { Text("Edit") },
-                        onClick = { expanded = false; onEdit() },
-                        leadingIcon = { Icon(Icons.Default.Edit, null) },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Delete") },
-                        onClick = { expanded = false; onDelete() },
-                        leadingIcon = { Icon(Icons.Default.Delete, null) },
-                    )
-                }
-            },
-        )
+                Text(
+                    buildString {
+                        append(DateUtils.formatShortDate(entry.date))
+                        entry.accountName?.takeIf { it.isNotBlank() }?.let { append(" · $it") }
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppColors.Muted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Text(
+                CurrencyFormatter.formatSigned(entry.amount, currency),
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.bodyMedium,
+                color = AppColors.Positive,
+            )
+        }
+        Box {
+            IconButton(onClick = { menuExpanded = true }) {
+                Icon(Icons.Default.MoreVert, contentDescription = "Income options")
+            }
+            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                DropdownMenuItem(
+                    text = { Text("Edit") },
+                    onClick = { menuExpanded = false; onEdit() },
+                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                )
+                DropdownMenuItem(
+                    text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                    onClick = { menuExpanded = false; onDelete() },
+                    leadingIcon = {
+                        Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                    },
+                )
+            }
+        }
     }
 }

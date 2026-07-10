@@ -4,14 +4,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.moneyplann.app.AppContainer
 import com.moneyplann.app.core.AnalyticsHelper
 import com.moneyplann.app.data.models.Account
@@ -37,6 +40,8 @@ import com.moneyplann.app.ui.recurring.RecurringExpensesScreen
 import com.moneyplann.app.ui.recurring.RecurringIncomesScreen
 import com.moneyplann.app.ui.settings.LocalOpenRecurringExpenses
 import com.moneyplann.app.ui.settings.LocalOpenRecurringIncomes
+import com.moneyplann.app.ui.settings.LocalOpenSettings
+import com.moneyplann.app.ui.settings.SettingsScreen
 import kotlinx.coroutines.launch
 
 private enum class AppTab(val label: String) {
@@ -57,8 +62,16 @@ fun AppNavigation(modifier: Modifier = Modifier) {
     var expensesReloadKey by remember { mutableIntStateOf(0) }
     var showRecurringExpenses by remember { mutableStateOf(false) }
     var showRecurringIncomes by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val api = AppContainer.financeApi
+    val navItemColors = NavigationBarItemDefaults.colors(
+        selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        selectedTextColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
+        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 
     LaunchedEffect(selectedTab) {
         when (AppTab.entries[selectedTab]) {
@@ -83,20 +96,24 @@ fun AppNavigation(modifier: Modifier = Modifier) {
 
     Box(modifier.fillMaxSize()) {
         CompositionLocalProvider(
+            LocalOpenSettings provides { showSettings = true },
             LocalOpenRecurringExpenses provides { showRecurringExpenses = true },
             LocalOpenRecurringIncomes provides { showRecurringIncomes = true },
         ) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
+            containerColor = MaterialTheme.colorScheme.background,
             bottomBar = {
-                NavigationBar {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    tonalElevation = 0.dp,
+                ) {
                     AppTab.entries.forEachIndexed { index, tab ->
                         NavigationBarItem(
                             selected = selectedTab == index,
                             onClick = {
                                 if (tab == AppTab.ADD) {
                                     openAddExpense()
-                                    selectedTab = previousTab
                                 } else {
                                     previousTab = index
                                     selectedTab = index
@@ -108,13 +125,14 @@ fun AppNavigation(modifier: Modifier = Modifier) {
                                         AppTab.EXPENSES -> Icons.AutoMirrored.Filled.List
                                         AppTab.INCOME -> Icons.Default.Payments
                                         AppTab.ADD -> Icons.Default.Add
-                                        AppTab.CHAT -> Icons.Default.Chat
+                                        AppTab.CHAT -> Icons.AutoMirrored.Filled.Chat
                                         AppTab.ACCOUNTS -> Icons.Default.AccountBalance
                                     },
                                     contentDescription = tab.label,
                                 )
                             },
                             label = { Text(tab.label) },
+                            colors = navItemColors,
                         )
                     }
                 }
@@ -154,6 +172,21 @@ fun AppNavigation(modifier: Modifier = Modifier) {
                         } catch (_: Exception) {
                         }
                     }
+                },
+            )
+        }
+
+        if (showSettings) {
+            SettingsScreen(
+                modifier = Modifier.fillMaxSize(),
+                onDismiss = { showSettings = false },
+                onOpenRecurringExpenses = {
+                    showSettings = false
+                    showRecurringExpenses = true
+                },
+                onOpenRecurringIncomes = {
+                    showSettings = false
+                    showRecurringIncomes = true
                 },
             )
         }

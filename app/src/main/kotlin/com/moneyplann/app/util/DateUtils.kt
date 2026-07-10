@@ -1,7 +1,9 @@
 package com.moneyplann.app.util
 
 import java.text.NumberFormat
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Currency
 import java.util.Locale
@@ -12,6 +14,13 @@ object DateUtils {
     fun localIsoDate(date: LocalDate = LocalDate.now()): String = date.toString()
 
     fun parseLocalIsoDate(iso: String): LocalDate? = runCatching { LocalDate.parse(iso.take(10)) }.getOrNull()
+
+    /** Material3 DatePicker stores calendar dates as UTC midnight — not local timezone. */
+    fun datePickerUtcMillis(date: LocalDate = LocalDate.now()): Long =
+        date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+
+    fun localDateFromDatePickerUtcMillis(millis: Long): LocalDate =
+        Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
 
     fun currentYearMonth(): Pair<Int, Int> {
         val now = LocalDate.now()

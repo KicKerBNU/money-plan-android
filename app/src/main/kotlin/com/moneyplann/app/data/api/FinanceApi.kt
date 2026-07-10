@@ -114,6 +114,24 @@ class FinanceApi(private val client: ApiClient) {
     suspend fun fetchCategories(): List<Category> =
         client.fetchJson<DataResponse<List<Category>>>("/v1/categories", silentError = true).data
 
+    suspend fun createCategory(name: String, icon: String? = null): Category =
+        client.fetchJson<DataResponse<Category>>(
+            path = "/v1/categories",
+            method = "POST",
+            body = encode(CategoryBody(name, icon)),
+        ).data
+
+    suspend fun updateCategory(id: Int, name: String, icon: String? = null): Category =
+        client.fetchJson<DataResponse<Category>>(
+            path = "/v1/categories/$id",
+            method = "PUT",
+            body = encode(CategoryBody(name, icon)),
+        ).data
+
+    suspend fun deleteCategory(id: Int) {
+        client.fetchVoid("/v1/categories/$id", method = "DELETE")
+    }
+
     suspend fun fetchIncomes(year: Int, month: Int): List<IncomeEntry> =
         client.fetchJson<DataResponse<List<IncomeEntry>>>(
             "/v1/incomes?year=$year&month=$month",
@@ -312,6 +330,7 @@ internal data class UpdateRecurringExpenseBody(
 
 @Serializable internal data class ReorderExpensesBody(val year: Int, val month: Int, val orderedIds: List<Int>)
 @Serializable internal data class NameBody(val name: String)
+@Serializable internal data class CategoryBody(val name: String, val icon: String? = null)
 @Serializable internal data class EmptyBody(val placeholder: String? = null)
 @Serializable
 internal data class CreateIncomeBody(

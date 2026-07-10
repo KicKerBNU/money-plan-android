@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -13,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.google.firebase.FirebaseApp
 import com.moneyplann.app.core.AnalyticsHelper
 import com.moneyplann.app.ui.auth.LoginScreen
@@ -75,7 +77,11 @@ fun MoneyPlanRoot(activity: ComponentActivity) {
             !sessionReady -> LoadingStateView()
             else -> AppNavigation()
         }
-        ToastHost(Modifier.align(Alignment.TopCenter))
+        ToastHost(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 88.dp),
+        )
     }
 }
 

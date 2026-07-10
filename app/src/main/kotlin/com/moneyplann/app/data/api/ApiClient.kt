@@ -34,7 +34,7 @@ class ApiClient(private val authRepository: AuthRepository) {
         method: String = "GET",
         body: String? = null,
         silentError: Boolean = false,
-        silentSuccess: Boolean = false,
+        silentSuccess: Boolean = true,
         successMessage: String? = null,
         decode: (String) -> T,
     ): T = withContext(Dispatchers.IO) {
@@ -124,7 +124,7 @@ class ApiClient(private val authRepository: AuthRepository) {
         method: String = "GET",
         body: String? = null,
         silentError: Boolean = false,
-        silentSuccess: Boolean = false,
+        silentSuccess: Boolean = true,
         successMessage: String? = null,
     ): T = fetch(
         path = path,
@@ -141,7 +141,7 @@ class ApiClient(private val authRepository: AuthRepository) {
         method: String = "DELETE",
         body: String? = null,
         silentError: Boolean = false,
-        silentSuccess: Boolean = false,
+        silentSuccess: Boolean = true,
         successMessage: String? = null,
     ) {
         fetch<EmptyResponse>(

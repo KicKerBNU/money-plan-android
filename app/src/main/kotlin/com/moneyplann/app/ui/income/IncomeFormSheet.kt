@@ -1,5 +1,6 @@
 package com.moneyplann.app.ui.income
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -33,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.moneyplann.app.AppContainer
 import com.moneyplann.app.data.models.Account
@@ -42,11 +45,10 @@ import com.moneyplann.app.data.models.RecurrenceSave
 import com.moneyplann.app.data.models.RecurringIncome
 import com.moneyplann.app.data.models.displayLabel
 import com.moneyplann.app.ui.theme.AppColors
+import com.moneyplann.app.ui.theme.IncomeTheme
 import com.moneyplann.app.util.DateUtils
 import com.moneyplann.app.util.DefaultAccountPicker
-import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneId
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,6 +57,7 @@ fun IncomeFormSheet(
     editing: IncomeEntry? = null,
     linkedRecurring: RecurringIncome? = null,
     onDismiss: () -> Unit,
+    onDelete: (() -> Unit)? = null,
     onSave: (
         date: String,
         amount: Double,
@@ -65,9 +68,8 @@ fun IncomeFormSheet(
     modifier: Modifier = Modifier,
 ) {
     val initialDateMillis = remember(editing) {
-        editing?.date?.let { DateUtils.parseLocalIsoDate(it) }
-            ?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli()
-            ?: LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val date = editing?.date?.let(DateUtils::parseLocalIsoDate) ?: LocalDate.now()
+        DateUtils.datePickerUtcMillis(date)
     }
     val dateState = rememberDatePickerState(initialSelectedDateMillis = initialDateMillis)
     var amountText by remember(editing) { mutableStateOf(editing?.amount?.toString().orEmpty()) }
@@ -85,6 +87,7 @@ fun IncomeFormSheet(
     var errorMessage by remember { mutableStateOf("") }
     var accountExpanded by remember { mutableStateOf(false) }
     var frequencyExpanded by remember { mutableStateOf(false) }
+    var showDatePicker by remember { mutableStateOf(false) }
 
     val resolvedRecurringId = editing?.recurringIncomeId ?: linkedRecurring?.id ?: loadedRecurring?.id
 
@@ -116,15 +119,42 @@ fun IncomeFormSheet(
         dateState.selectedDateMillis = initialDateMillis
     }
 
+    val selectedDateLabel = remember(dateState.selectedDateMillis) {
+        dateState.selectedDateMillis?.let { millis ->
+            DateUtils.formatShortDate(
+                DateUtils.localIsoDate(DateUtils.localDateFromDatePickerUtcMillis(millis)),
+            )
+        }.orEmpty()
+    }
+
+    if (showDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
+            },
+        ) {
+            DatePicker(state = dateState)
+        }
+    }
+
     Surface(
         modifier = modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background,
+        color = IncomeTheme.FormSheetBackground,
     ) {
         Scaffold(
+            containerColor = IncomeTheme.FormSheetBackground,
             topBar = {
                 TopAppBar(
-                    title = { Text(if (editing == null) "Add income" else "Edit income") },
-                    navigationIcon = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+                    title = { Text(if (editing == null) "New income" else "Edit income") },
+                    navigationIcon = {
+                        TextButton(onClick = onDismiss) {
+                            Text("Cancel", color = AppColors.ActionBlue)
+                        }
+                    },
                     actions = {
                         TextButton(onClick = {
                             val amount = amountText.replace(",", ".").toDoubleOrNull()
@@ -133,9 +163,7 @@ fun IncomeFormSheet(
                                 errorMessage = "Fill in all required fields."
                                 return@TextButton
                             }
-                            val date = DateUtils.localIsoDate(
-                                Instant.ofEpochMilli(dateMillis).atZone(ZoneId.systemDefault()).toLocalDate(),
-                            )
+                            val date = DateUtils.localIsoDate(DateUtils.localDateFromDatePickerUtcMillis(dateMillis))
                             val recurrence = when {
                                 editing == null && isRecurring ->
                                     RecurrenceSave(isCreate = true, enabled = true, frequency = recurrenceFrequency)
@@ -146,30 +174,44 @@ fun IncomeFormSheet(
                                 else -> null
                             }
                             onSave(date, amount, accountId, note.ifBlank { null }, recurrence)
-                        }) { Text("Save") }
+                        }) { Text("Save", color = AppColors.ActionBlue) }
                     },
                 )
             },
         ) { padding ->
             Column(
-                Modifier.padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
+                Modifier
+                    .padding(padding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                DatePicker(state = dateState)
+                OutlinedTextField(
+                    value = selectedDateLabel,
+                    onValueChange = {},
+                    readOnly = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showDatePicker = true },
+                    singleLine = true,
+                )
+
                 OutlinedTextField(
                     value = amountText,
                     onValueChange = { amountText = it },
-                    label = { Text("Amount") },
+                    placeholder = { Text("Amount") },
                     modifier = Modifier.fillMaxWidth(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(textAlign = TextAlign.End),
                 )
+
                 ExposedDropdownMenuBox(expanded = accountExpanded, onExpandedChange = { accountExpanded = it }) {
                     OutlinedTextField(
                         value = accounts.firstOrNull { it.id == accountId }?.name.orEmpty(),
                         onValueChange = {},
                         readOnly = true,
-                        label = { Text("Account") },
+                        placeholder = { Text("Bank Accounts") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(accountExpanded) },
                         modifier = Modifier.menuAnchor().fillMaxWidth(),
                     )
@@ -182,11 +224,13 @@ fun IncomeFormSheet(
                         }
                     }
                 }
+
                 OutlinedTextField(
                     value = note,
                     onValueChange = { note = it },
-                    label = { Text("Note") },
+                    placeholder = { Text("Note") },
                     modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
                 )
 
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
@@ -196,7 +240,7 @@ fun IncomeFormSheet(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("Recurring income")
+                    Text("Repeat this income")
                     Switch(checked = isRecurring, onCheckedChange = { isRecurring = it })
                 }
                 if (isRecurring) {
@@ -228,22 +272,34 @@ fun IncomeFormSheet(
                         }
                     }
                 }
-                Text(
-                    when {
-                        editing != null && isRecurring ->
-                            "Changes apply to the linked recurring template."
-                        isRecurring ->
-                            "A recurring template will be created for future deposits."
-                        resolvedRecurringId != null ->
-                            "Recurrence is paused. Turn on to schedule future deposits again."
-                        else -> ""
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = AppColors.Muted,
-                )
+                if (editing != null || isRecurring || resolvedRecurringId != null) {
+                    Text(
+                        when {
+                            editing != null && isRecurring ->
+                                "Changes apply to the linked recurring template."
+                            isRecurring ->
+                                "A recurring template will be created for future deposits."
+                            resolvedRecurringId != null ->
+                                "Recurrence is paused. Turn on to schedule future deposits again."
+                            else -> ""
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AppColors.Muted,
+                    )
+                }
 
                 if (errorMessage.isNotEmpty()) {
                     Text(errorMessage, color = AppColors.Danger, style = MaterialTheme.typography.bodySmall)
+                }
+
+                if (editing != null && onDelete != null) {
+                    HorizontalDivider(Modifier.padding(top = 8.dp))
+                    TextButton(
+                        onClick = onDelete,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Delete income", color = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
         }

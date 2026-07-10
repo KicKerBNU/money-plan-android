@@ -1,31 +1,25 @@
 package com.moneyplann.app.ui.recurring
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -34,6 +28,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,7 +40,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -55,13 +50,14 @@ import com.moneyplann.app.data.models.RecurringIncome
 import com.moneyplann.app.data.models.displayLabel
 import com.moneyplann.app.ui.components.EmptyStateView
 import com.moneyplann.app.ui.components.ErrorStateView
-import com.moneyplann.app.ui.components.FinanceCard
+import com.moneyplann.app.ui.components.IncomeIconView
 import com.moneyplann.app.ui.components.LoadingStateView
+import com.moneyplann.app.ui.components.ScreenHeader
 import com.moneyplann.app.ui.theme.AppColors
+import com.moneyplann.app.ui.theme.IncomeTheme
+import com.moneyplann.app.ui.theme.RecurringTheme
 import com.moneyplann.app.util.CurrencyFormatter
 import com.moneyplann.app.util.DateUtils
-import java.time.Instant
-import java.time.ZoneId
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,37 +70,48 @@ fun RecurringIncomesScreen(
     val currency = AppContainer.moneyPreferences.activeCurrency
     var editingItem by remember { mutableStateOf<RecurringIncome?>(null) }
     var itemToDelete by remember { mutableStateOf<RecurringIncome?>(null) }
+    val screenBackground = RecurringTheme.ScreenBackground
 
     LaunchedEffect(Unit) { viewModel.load() }
 
     Box(modifier.fillMaxSize()) {
-        Surface(
+        Scaffold(
             modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background,
-        ) {
-            Scaffold(
-                modifier = Modifier.fillMaxSize(),
-                topBar = {
-                    TopAppBar(
-                        title = { Text("Recurring income") },
-                        navigationIcon = { TextButton(onClick = onDismiss) { Text("Done") } },
-                    )
-                },
-            ) { padding ->
-                when {
-                    state.isLoading -> LoadingStateView(Modifier.padding(padding))
-                    state.errorMessage != null -> ErrorStateView(state.errorMessage!!, Modifier.padding(padding))
-                    state.items.isEmpty() -> EmptyStateView(
-                        title = "No recurring income",
-                        message = "Mark an income entry as recurring when you add it, or link one when editing an existing entry.",
-                        modifier = Modifier.padding(padding).fillMaxSize(),
-                    )
-                    else -> LazyColumn(
-                        modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
+            containerColor = screenBackground,
+            topBar = {
+                ScreenHeader(
+                    title = "Recurring income",
+                    backgroundColor = screenBackground,
+                    actions = {
+                        TextButton(onClick = onDismiss) {
+                            Text("Back", color = AppColors.ActionBlue)
+                        }
+                    },
+                )
+            },
+        ) { padding ->
+            when {
+                state.isLoading -> LoadingStateView(Modifier.padding(padding))
+                state.errorMessage != null -> ErrorStateView(state.errorMessage!!, Modifier.padding(padding))
+                state.items.isEmpty() -> EmptyStateView(
+                    title = "No recurring income",
+                    message = "Mark an income entry as recurring when you add it, or link one when editing an existing entry.",
+                    modifier = Modifier.padding(padding).fillMaxSize(),
+                )
+                else -> PullToRefreshBox(
+                    isRefreshing = false,
+                    onRefresh = { viewModel.load() },
+                    modifier = Modifier.fillMaxSize().padding(padding),
+                ) {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
+                        item { Spacer(Modifier.height(4.dp)) }
                         items(state.items, key = { it.id }) { item ->
-                            RecurringIncomeRow(
+                            RecurringIncomeCard(
                                 item = item,
                                 currency = currency,
                                 onToggleActive = { active -> viewModel.setActive(item, active) },
@@ -112,6 +119,7 @@ fun RecurringIncomesScreen(
                                 onDelete = { itemToDelete = item },
                             )
                         }
+                        item { Spacer(Modifier.height(16.dp)) }
                     }
                 }
             }
@@ -140,7 +148,9 @@ fun RecurringIncomesScreen(
                 TextButton(onClick = {
                     viewModel.delete(itemToDelete!!)
                     itemToDelete = null
-                }) { Text("Delete") }
+                }) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
             },
             dismissButton = { TextButton(onClick = { itemToDelete = null }) { Text("Cancel") } },
         )
@@ -148,92 +158,41 @@ fun RecurringIncomesScreen(
 }
 
 @Composable
-private fun RecurringIncomeRow(
+private fun RecurringIncomeCard(
     item: RecurringIncome,
     currency: String,
     onToggleActive: (Boolean) -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    var menuExpanded by remember { mutableStateOf(false) }
-
-    FinanceCard(
-        modifier = Modifier.clickable(onClick = onEdit),
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    CurrencyFormatter.format(item.amount, currency),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (item.active) AppColors.Positive else AppColors.Muted,
-                )
-                Surface(
-                    shape = MaterialTheme.shapes.small,
-                    color = if (item.active) {
-                        MaterialTheme.colorScheme.secondaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.surfaceVariant
-                    },
-                ) {
-                    Text(
-                        if (item.active) item.frequency.displayLabel() else "Paused",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (item.active) {
-                            MaterialTheme.colorScheme.onSecondaryContainer
-                        } else {
-                            AppColors.Muted
-                        },
-                    )
-                }
-            }
-            Text(
-                item.accountName,
-                style = MaterialTheme.typography.bodyMedium,
-                color = AppColors.Muted,
-            )
-            if (item.active) {
-                Text(
-                    "Next expected: ${DateUtils.formatShortDate(item.nextDate)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = AppColors.Muted,
-                )
-            }
-            item.note?.takeIf { it.isNotBlank() }?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = AppColors.Muted)
-            }
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("Active", style = MaterialTheme.typography.bodyMedium)
-                Switch(checked = item.active, onCheckedChange = onToggleActive)
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "More options")
-                }
-                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                    DropdownMenuItem(
-                        text = { Text("Edit") },
-                        onClick = { menuExpanded = false; onEdit() },
-                        leadingIcon = { Icon(Icons.Default.Edit, null) },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Delete") },
-                        onClick = { menuExpanded = false; onDelete() },
-                        leadingIcon = { Icon(Icons.Default.Delete, null) },
-                    )
-                }
-            }
+    val title = item.note?.takeIf { it.isNotBlank() } ?: item.accountName
+    val subtitle = buildString {
+        append(item.accountName)
+        if (item.active) {
+            append(" · Next due ${DateUtils.formatShortDate(item.nextDate)}")
         }
     }
+    val formattedAmount = CurrencyFormatter.format(item.amount, currency)
+    val amount = if (item.active) "+$formattedAmount" else formattedAmount
+
+    RecurringItemCard(
+        icon = {
+            IncomeIconView(
+                label = title,
+                accentColor = IncomeTheme.IconAccent,
+                chipBaseSurface = RecurringTheme.CardBackground,
+            )
+        },
+        title = title,
+        subtitle = subtitle,
+        amount = amount,
+        amountColor = if (item.active) AppColors.Positive else AppColors.Muted,
+        frequency = item.frequency,
+        active = item.active,
+        onToggleActive = onToggleActive,
+        onEdit = onEdit,
+        onDelete = onDelete,
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -256,8 +215,7 @@ private fun RecurringIncomeEditSheet(
 
     val startDate = remember(item) { DateUtils.parseLocalIsoDate(item.startDate) }
     val initialDateMillis = remember(item) {
-        startDate?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli()
-            ?: java.time.LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        DateUtils.datePickerUtcMillis(startDate ?: java.time.LocalDate.now())
     }
     val dateState = rememberDatePickerState(initialSelectedDateMillis = initialDateMillis)
 
@@ -267,14 +225,19 @@ private fun RecurringIncomeEditSheet(
 
     Surface(
         modifier = modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background,
+        color = RecurringTheme.FormSheetBackground,
     ) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
+            containerColor = RecurringTheme.FormSheetBackground,
             topBar = {
                 TopAppBar(
                     title = { Text("Edit recurring income") },
-                    navigationIcon = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+                    navigationIcon = {
+                        TextButton(onClick = onDismiss) {
+                            Text("Cancel", color = AppColors.ActionBlue)
+                        }
+                    },
                     actions = {
                         TextButton(onClick = {
                             val amount = amountText.replace(",", ".").toDoubleOrNull()
@@ -283,9 +246,7 @@ private fun RecurringIncomeEditSheet(
                                 errorMessage = "Fill in all required fields."
                                 return@TextButton
                             }
-                            val startIso = DateUtils.localIsoDate(
-                                Instant.ofEpochMilli(dateMillis).atZone(ZoneId.systemDefault()).toLocalDate(),
-                            )
+                            val startIso = DateUtils.localIsoDate(DateUtils.localDateFromDatePickerUtcMillis(dateMillis))
                             val accountName = accounts.firstOrNull { it.id == accountId }?.name.orEmpty()
                             onSave(
                                 item.copy(
@@ -299,13 +260,21 @@ private fun RecurringIncomeEditSheet(
                                     active = isActive,
                                 ),
                             )
-                        }) { Text("Save") }
+                        }) {
+                            Text("Save", color = AppColors.ActionBlue)
+                        }
                     },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = RecurringTheme.FormSheetBackground,
+                    ),
                 )
             },
         ) { padding ->
             Column(
-                Modifier.padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
+                Modifier
+                    .padding(padding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 OutlinedTextField(
@@ -327,14 +296,14 @@ private fun RecurringIncomeEditSheet(
                     onAccountExpandedChange = { accountExpanded = it },
                     onFrequencyExpandedChange = { frequencyExpanded = it },
                 )
-                Text("Start date", style = MaterialTheme.typography.labelLarge)
+                Text("Start date", style = MaterialTheme.typography.labelLarge, color = AppColors.PrimaryLabel)
                 DatePicker(state = dateState)
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("Recurring income")
+                    Text("Active", color = AppColors.PrimaryLabel)
                     Switch(checked = isActive, onCheckedChange = { isActive = it })
                 }
                 OutlinedTextField(

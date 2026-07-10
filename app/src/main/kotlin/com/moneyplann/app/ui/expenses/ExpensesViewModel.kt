@@ -16,7 +16,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.time.LocalDate
+import java.time.YearMonth
+import java.time.format.TextStyle
+import java.util.Locale
+
+data class ExpenseDateGroup(
+    val date: String,
+    val total: Double,
+    val items: List<Expense>,
+)
 
 data class ExpensesUiState(
     val isLoading: Boolean = true,
@@ -27,36 +35,19 @@ data class ExpensesUiState(
     val categories: List<Category> = emptyList(),
     val recurringExpenses: List<RecurringExpense> = emptyList(),
     val searchText: String = "",
-    val selectedCategoryIds: Set<Int> = emptySet(),
-    val dateRangeStart: String? = null,
-    val dateRangeEnd: String? = null,
+    val year: Int = DateUtils.currentYearMonth().first,
+    val month: Int = DateUtils.currentYearMonth().second,
 ) {
-    val yearMonth = DateUtils.currentYearMonth()
-    val year get() = yearMonth.first
-    val month get() = yearMonth.second
-
-    val canReorder: Boolean
-        get() = searchText.isBlank() && selectedCategoryIds.isEmpty() && dateRangeStart == null
-
     val filteredExpenses: List<Expense>
         get() {
-            var list = expenses
-            if (searchText.isNotBlank()) {
-                val q = searchText.lowercase()
-                list = list.filter {
-                    (it.note?.lowercase()?.contains(q) == true) ||
-                        it.categoryName.lowercase().contains(q) ||
-                        it.accountName.lowercase().contains(q) ||
-                        it.date.contains(q)
-                }
+            if (searchText.isBlank()) return expenses
+            val q = searchText.lowercase()
+            return expenses.filter {
+                (it.note?.lowercase()?.contains(q) == true) ||
+                    it.categoryName.lowercase().contains(q) ||
+                    it.accountName.lowercase().contains(q) ||
+                    it.date.contains(q)
             }
-            if (selectedCategoryIds.isNotEmpty()) {
-                list = list.filter { selectedCategoryIds.contains(it.categoryId) }
-            }
-            if (dateRangeStart != null && dateRangeEnd != null) {
-                list = list.filter { it.date >= dateRangeStart && it.date <= dateRangeEnd }
-            }
-            return list
         }
 
     val totalSpent: Double get() = filteredExpenses.sumOf { it.amount }
@@ -64,7 +55,7 @@ data class ExpensesUiState(
     val cashFlow: Double get() = totalIncome - totalSpent
 
     val categoryBreakdown: List<Pair<String, Double>>
-        get() = expenses.groupBy { it.categoryName }
+        get() = filteredExpenses.groupBy { it.categoryName }
             .map { (name, items) -> name to items.sumOf { e -> e.amount } }
             .sortedWith { a, b ->
                 when {
@@ -73,6 +64,20 @@ data class ExpensesUiState(
                     else -> b.second.compareTo(a.second)
                 }
             }
+
+    val dateGroups: List<ExpenseDateGroup>
+        get() {
+            val groups = filteredExpenses.groupBy { it.date }
+            return groups.keys.sortedDescending().map { date ->
+                val items = groups[date].orEmpty()
+                ExpenseDateGroup(date, items.sumOf { it.amount }, items)
+            }
+        }
+
+    val periodLabel: String
+        get() = YearMonth.of(year, month)
+            .month
+            .getDisplayName(TextStyle.FULL, Locale.getDefault()) + " $year"
 }
 
 class ExpensesViewModel : ViewModel() {
@@ -82,32 +87,11 @@ class ExpensesViewModel : ViewModel() {
 
     fun setSearch(text: String) = _state.update { it.copy(searchText = text) }
 
-    fun toggleCategory(id: Int) {
-        _state.update { current ->
-            val next = current.selectedCategoryIds.toMutableSet()
-            if (next.contains(id)) next.remove(id) else next.add(id)
-            current.copy(selectedCategoryIds = next)
-        }
+    fun shiftPeriod(delta: Int) {
+        val current = YearMonth.of(_state.value.year, _state.value.month).plusMonths(delta.toLong())
+        _state.update { it.copy(year = current.year, month = current.monthValue) }
+        load()
     }
-
-    fun clearCategories() = _state.update { it.copy(selectedCategoryIds = emptySet()) }
-
-    fun applyQuickRange(days: Int) {
-        val end = LocalDate.now()
-        val start = end.minusDays((days - 1).toLong())
-        _state.update {
-            it.copy(
-                dateRangeStart = DateUtils.localIsoDate(start),
-                dateRangeEnd = DateUtils.localIsoDate(end),
-            )
-        }
-    }
-
-    fun setDateRange(start: String, end: String) {
-        _state.update { it.copy(dateRangeStart = start, dateRangeEnd = end) }
-    }
-
-    fun clearDateRange() = _state.update { it.copy(dateRangeStart = null, dateRangeEnd = null) }
 
     fun load() {
         viewModelScope.launch {
@@ -226,48 +210,7 @@ class ExpensesViewModel : ViewModel() {
             _state.update { it.copy(expenses = it.expenses.filterNot { e -> e.id == expense.id }) }
             try {
                 api.deleteExpense(expense.id)
-            } catch (_: Exception) {
-                _state.update { it.copy(expenses = snapshot) }
                 load()
-            }
-        }
-    }
-
-    fun updateExpenseOptimistic(updated: Expense) {
-        viewModelScope.launch {
-            val index = _state.value.expenses.indexOfFirst { it.id == updated.id }
-            if (index < 0) return@launch
-            val snapshot = _state.value.expenses[index]
-            _state.update { s ->
-                s.copy(expenses = s.expenses.toMutableList().also { it[index] = updated })
-            }
-            try {
-                val saved = api.updateExpense(
-                    updated.id, updated.date, updated.amount,
-                    updated.categoryId, updated.accountId, updated.note,
-                )
-                _state.update { s ->
-                    s.copy(expenses = s.expenses.toMutableList().also { it[index] = saved })
-                }
-            } catch (_: Exception) {
-                _state.update { s ->
-                    s.copy(expenses = s.expenses.toMutableList().also { it[index] = snapshot })
-                }
-            }
-        }
-    }
-
-    fun reorder(fromIndex: Int, toIndex: Int) {
-        if (!_state.value.canReorder) return
-        viewModelScope.launch {
-            val ordered = _state.value.expenses.toMutableList()
-            val item = ordered.removeAt(fromIndex)
-            ordered.add(if (toIndex > fromIndex) toIndex - 1 else toIndex, item)
-            val snapshot = _state.value.expenses
-            _state.update { it.copy(expenses = ordered) }
-            try {
-                val saved = api.reorderExpenses(_state.value.year, _state.value.month, ordered.map { it.id })
-                _state.update { it.copy(expenses = saved) }
             } catch (_: Exception) {
                 _state.update { it.copy(expenses = snapshot) }
                 load()

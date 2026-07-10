@@ -6,6 +6,7 @@ import com.moneyplann.app.data.api.FinanceApi
 import com.moneyplann.app.data.auth.AuthRepository
 import com.moneyplann.app.data.chat.ExpenseChatConsentStore
 import com.moneyplann.app.data.prefs.MoneyPreferences
+import com.moneyplann.app.data.prefs.NotificationPreferences
 import com.moneyplann.app.data.prefs.ThemePreferences
 
 object AppContainer {
@@ -22,6 +23,8 @@ object AppContainer {
         private set
     lateinit var themePreferences: ThemePreferences
         private set
+    lateinit var notificationPreferences: NotificationPreferences
+        private set
     lateinit var expenseChatConsentStore: ExpenseChatConsentStore
         private set
 
@@ -33,6 +36,7 @@ object AppContainer {
         financeApi = FinanceApi(apiClient)
         moneyPreferences = MoneyPreferences(appContext)
         themePreferences = ThemePreferences(appContext)
+        notificationPreferences = NotificationPreferences(appContext)
         expenseChatConsentStore = ExpenseChatConsentStore(appContext)
     }
 }
